@@ -42,6 +42,7 @@ public class ProductController{
             product.setDescription(productDetails.getDescription());
             product.setPrice(productDetails.getPrice());
             product.setImageUrl(productDetails.getImageUrl());
+            product.setCategory(productDetails.getCategory());
             Product updatedProduct = repository.save(product);
             return org.springframework.http.ResponseEntity.ok(updatedProduct);
         } else {

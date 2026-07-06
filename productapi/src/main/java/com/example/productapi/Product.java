@@ -17,17 +17,20 @@ public class Product {
     private String description;
     private BigDecimal price;
     private String imageUrl;
+     // Kategori alanı (Default olarak "T-Shirts" atayabilirsin)
+    private String category = "T-Shirts";
 
     // 1. Boş constructor — JPA bunu ister
     public Product() {
     }
 
     // 2. (İsteğe bağlı) örnek veri eklerken kolaylık olsun diye
-    public Product(String name, String description, BigDecimal price, String imageUrl) {
+    public Product(String name, String description, BigDecimal price, String imageUrl, String category) {
         this.name = name;
         this.description = description;
         this.price = price;
         this.imageUrl = imageUrl;
+        this.category = category != null ? category : "T-Shirts";   
     }
 
     // Getter / Setter'lar
@@ -64,5 +67,12 @@ public class Product {
     }
     public void setImageUrl(String imageUrl) {
         this.imageUrl = imageUrl;
+    }
+
+    public String getCategory() {
+        return category;
+    }
+    public void setCategory(String category) {
+        this.category = category != null ? category : "T-Shirts";
     }
 }

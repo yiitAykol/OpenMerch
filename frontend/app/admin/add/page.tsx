@@ -1,21 +1,45 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import styles from "../admin.module.scss";
 
+type Category = { id: number; name: string };
+
 export default function AddProductPage() {
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [formData, setFormData] = useState({
     name: "",
     description: "",
     price: "",
     imageUrl: "",
+    category: "",
   });
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+  // Mevcut kategorileri çek
+  useEffect(() => {
+    const fetchCategories = async () => {
+      try {
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/categories`);
+        if (res.ok) {
+          const data = await res.json();
+          setCategories(data);
+          // İlk kategoriyi varsayılan seç
+          if (data.length > 0) {
+            setFormData(prev => ({ ...prev, category: data[0].name }));
+          }
+        }
+      } catch (error) {
+        console.error("Kategoriler getirilirken hata:", error);
+      }
+    };
+    fetchCategories();
+  }, []);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
   };
@@ -69,6 +93,26 @@ export default function AddProductPage() {
               onChange={handleChange} 
               placeholder="Örn: Kablosuz Kulaklık"
             />
+          </div>
+
+          <div className={styles.formGroup}>
+            <label htmlFor="category">Kategori</label>
+            <select
+              id="category"
+              name="category"
+              required
+              value={formData.category}
+              onChange={handleChange}
+            >
+              {categories.length === 0 && (
+                <option value="">Önce kategori ekleyin</option>
+              )}
+              {categories.map((cat) => (
+                <option key={cat.id} value={cat.name}>
+                  {cat.name}
+                </option>
+              ))}
+            </select>
           </div>
 
           <div className={styles.formGroup}>

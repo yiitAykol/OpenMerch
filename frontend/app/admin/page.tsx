@@ -63,9 +63,14 @@ export default function AdminPage() {
     <div className={styles.container}>
       <div className={styles.header}>
         <h1>Ürün Yönetimi</h1>
-        <Link href="/admin/add" className={styles.addButton}>
-          + Yeni Ürün Ekle
-        </Link>
+        <div style={{ display: "flex", gap: "0.75rem" }}>
+          <Link href="/admin/categories" className={styles.addButton}>
+            Kategoriler
+          </Link>
+          <Link href="/admin/add" className={styles.addButton}>
+            + Yeni Ürün Ekle
+          </Link>
+        </div>
       </div>
 
       <table className={styles.productTable}>

@@ -12,12 +12,29 @@ export default function EditProductPage() {
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [categories, setCategories] = useState<{ id: number; name: string }[]>([]);
   const [formData, setFormData] = useState({
     name: "",
     description: "",
     price: "",
     imageUrl: "",
+    category: "",
   });
+
+  // Mevcut kategorileri çek
+  useEffect(() => {
+    const fetchCategories = async () => {
+      try {
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/categories`);
+        if (res.ok) {
+          setCategories(await res.json());
+        }
+      } catch (error) {
+        console.error("Kategoriler getirilirken hata:", error);
+      }
+    };
+    fetchCategories();
+  }, []);
 
   useEffect(() => {
     const fetchProduct = async () => {
@@ -32,6 +49,7 @@ export default function EditProductPage() {
               description: product.description,
               price: product.price.toString(),
               imageUrl: product.imageUrl,
+              category: product.category ?? "",
             });
           } else {
             alert("Ürün bulunamadı!");
@@ -50,7 +68,7 @@ export default function EditProductPage() {
     }
   }, [id, router]);
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
   };
@@ -107,6 +125,28 @@ export default function EditProductPage() {
               value={formData.name} 
               onChange={handleChange} 
             />
+          </div>
+
+          <div className={styles.formGroup}>
+            <label htmlFor="category">Kategori</label>
+            <select
+              id="category"
+              name="category"
+              required
+              value={formData.category}
+              onChange={handleChange}
+            >
+              {/* Ürünün mevcut kategorisi listede yoksa yine de görünsün */}
+              {formData.category &&
+                !categories.some((c) => c.name === formData.category) && (
+                  <option value={formData.category}>{formData.category}</option>
+                )}
+              {categories.map((cat) => (
+                <option key={cat.id} value={cat.name}>
+                  {cat.name}
+                </option>
+              ))}
+            </select>
           </div>
 
           <div className={styles.formGroup}>

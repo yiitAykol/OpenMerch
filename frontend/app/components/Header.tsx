@@ -32,7 +32,7 @@ export default function Header() {
 
   return (
     <nav className={styles.nav}>
-      
+
       {/* ÜST SATIR: LOGO ORTADA, İKONLAR SAĞ KÖŞEDE */}
       <div className={styles.topRow}>
         <div className={styles.leftPlaceholder}></div>
@@ -46,11 +46,11 @@ export default function Header() {
         <div className={styles.rightLinks}>
           <Link href="/favorites" className={isFlashing ? styles.flash : ""} title="Favoriler">
             {/* Minimal Yıldız İkonu (Favoriye eklenince sarı olur) */}
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" 
-                 fill={isFlashing ? "#FFD700" : "none"} 
-                 stroke={isFlashing ? "#FFD700" : "currentColor"} 
-                 strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
-                 style={{ transition: "all 0.3s ease" }}>
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
+              fill={isFlashing ? "#FFD700" : "none"}
+              stroke={isFlashing ? "#FFD700" : "currentColor"}
+              strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+              style={{ transition: "all 0.3s ease" }}>
               <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
             </svg>
           </Link>
@@ -68,9 +68,7 @@ export default function Header() {
       </div>
 
       {/* ALT SATIR: ÜRÜNLER (Logonun altında) */}
-      <div className={styles.bottomRow}>
-        <Link href="/">Ürünler</Link>
-      </div>
+
 
     </nav>
   );
