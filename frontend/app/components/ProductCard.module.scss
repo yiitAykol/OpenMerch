@@ -1,68 +1,129 @@
 .card {
-  border: 1px solid #0a0505;
-  border-radius: 8px;
-  padding: 16px;
-  margin: 8px;
-  background-color: #eceaea;
+  border: 1px solid #e5e0e0;
+  border-radius: 14px;
+  padding: 14px;
+  background-color: #ffffff;
   transition: transform 0.2s ease, box-shadow 0.2s ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
 
-  /* Kartın kendisine çok hafif bir gölge ve yukarı kalkma efekti veriyoruz */
+  /* Kartın kendisine hafif bir gölge ve yukarı kalkma efekti veriyoruz */
   &:hover {
     transform: translateY(-4px);
-    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 10px 20px rgba(0, 0, 0, 0.12);
   }
 }
 
-.button {
-  padding: 8px 16px;
-  background-color: white;
-  color: black;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  font-weight: 500;
-  transition: transform 0.2s ease, background-color 0.2s ease;
-
-  &:hover {
-    transform: translateY(-3px);
-    background-color: #f1f1f1;
-  }
-
-  &:active {
-    transform: translateY(1px);
-    background-color: #e2e2e2;
-  }
-}
-
-.buttonRemove {
-  padding: 8px 16px;
-  background-color: white;
-  color: black;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  font-weight: 500;
-  transition: transform 0.2s ease, background-color 0.2s ease;
-
-  &:hover {
-    transform: translateY(-3px);
-    background-color: #fff0f1;
-  }
-
-  &:active {
-    transform: translateY(1px);
-    background-color: #ffe0e3;
-  }
-}
-
-.name {
-  font-weight: bold;
+/* Resmin ve üstündeki ikonların bulunduğu kare alan */
+.imageWrap {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1 / 1;   /* kare resim */
+  border-radius: 10px;
+  overflow: hidden;
+  background-color: #f4f2f2;
 }
 
 .image {
   width: 100%;
-  height: 200px;
+  height: 100%;
   object-fit: cover;
-  border-radius: 6px;
-  margin-bottom: 12px;
+  display: block;
+}
+
+/* Sağ üst köşedeki yıldız butonu */
+.starButton {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(2px);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+  transition: transform 0.15s ease, background 0.15s ease;
+
+  &:hover {
+    transform: scale(1.1);
+    background: #ffffff;
+  }
+
+  &:active {
+    transform: scale(0.95);
+  }
+}
+
+.starActive {
+  background: #fffbeb;
+}
+
+/* Sağ alt köşedeki sepete ekle butonu */
+.cartButton {
+  position: absolute;
+  bottom: 10px;
+  right: 10px;
+  width: 42px;
+  height: 42px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: #111111;
+  color: #ffffff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  transition: transform 0.15s ease, background 0.15s ease;
+
+  &:hover {
+    transform: scale(1.1);
+    background: #333333;
+  }
+
+  &:active {
+    transform: scale(0.95);
+  }
+}
+
+/* Sepet butonunun üstündeki adet rozeti */
+.cartCount {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border-radius: 10px;
+  background: #ef4444;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 20px;
+  text-align: center;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.category {
+  font-size: 12px;
+  color: gray;
+  margin-top: 12px;
+  margin-bottom: 4px;
+}
+
+.name {
+  font-weight: bold;
+  font-size: 17px;
+}
+
+.price {
+  font-size: 15px;
+  color: #333;
+  margin-top: 2px;
 }

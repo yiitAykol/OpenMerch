@@ -5,4 +5,6 @@ import org.springframework.stereotype.Repository;
 
 @Repository
 public interface CartItemRepository extends JpaRepository<CartItem, Long> {
+    @org.springframework.transaction.annotation.Transactional
+    void deleteByProductId(Long productId);
 }

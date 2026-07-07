@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import styles from "./ProductCard.module.scss";
 import { useCart } from "../context/CartContext";
 
@@ -14,7 +15,21 @@ export interface Product {
 }
 
 export default function ProductCard({ product, isFavorite, onRemove }: { product: Product; isFavorite?: boolean; onRemove?: () => void; }) {
-    async function handleFavorite() {
+    // Yıldızın dolu/boş olmasını tutan state. Favoriler sayfasında zaten dolu başlar.
+    const [fav, setFav] = useState(!!isFavorite);
+
+    const { addToCart, cart } = useCart();
+
+    // Bu ürünün sepette kaç adet olduğu (her eklemede otomatik artar)
+    const qtyInCart = cart?.items.find((i) => i.product.id === product.id)?.quantity ?? 0;
+
+    async function handleStarClick() {
+        // Favoriler sayfasındaysak (onRemove verilmişse) tıklayınca favoriden çıkar
+        if (isFavorite && onRemove) {
+            onRemove();
+            return;
+        }
+
         const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/favorites`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -23,39 +38,63 @@ export default function ProductCard({ product, isFavorite, onRemove }: { product
         if (res.ok) {
             const data = await res.json();
             console.log("favori eklendi:", data);
+            setFav(true);
             window.dispatchEvent(new Event("favoriteAdded"));
         } else {
             console.log("favori eklenemedi");
         }
     }
 
-    const { addToCart } = useCart();
-
     return (
         <div className={styles.card}>
-            {product.imageUrl && (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={product.imageUrl} alt={product.name} className={styles.image} />
-            )}
+            <div className={styles.imageWrap}>
+                {product.imageUrl && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={product.imageUrl} alt={product.name} className={styles.image} />
+                )}
 
-            {/* BURAYI EKLERSEN KARTTA KATEGORİ DE GÖZÜKÜR */}
-            <div style={{ fontSize: '12px', color: 'gray', marginBottom: '4px' }}>
-                {product.category}
+                {/* Sağ üstte yıldız: tıklayınca favoriye ekler, içi sarı dolar */}
+                <button
+                    className={`${styles.starButton} ${fav ? styles.starActive : ""}`}
+                    onClick={handleStarClick}
+                    aria-label={fav ? "Favoriden çıkar" : "Favoriye ekle"}
+                >
+                    <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+                        <path
+                            d="M12 2.5l2.9 5.9 6.5.95-4.7 4.58 1.11 6.47L12 17.9 6.19 20.9l1.11-6.47-4.7-4.58 6.5-.95L12 2.5z"
+                            fill={fav ? "#facc15" : "none"}
+                            stroke={fav ? "#eab308" : "#555"}
+                            strokeWidth="1.6"
+                            strokeLinejoin="round"
+                        />
+                    </svg>
+                </button>
+
+                {/* Sağ altta sepete ekle: minimal ikon buton + adet sayısı */}
+                {!isFavorite && (
+                    <button
+                        className={styles.cartButton}
+                        onClick={() => addToCart(product.id, 1)}
+                        aria-label="Sepete Ekle"
+                    >
+                        <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+                            <path
+                                d="M6 6h15l-1.5 9h-12L6 6zm0 0l-.6-3H3m5 15a1 1 0 100 2 1 1 0 000-2zm10 0a1 1 0 100 2 1 1 0 000-2z"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="1.8"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                            />
+                        </svg>
+                        {qtyInCart > 0 && <span className={styles.cartCount}>{qtyInCart}</span>}
+                    </button>
+                )}
             </div>
 
+            <div className={styles.category}>{product.category}</div>
             <div className={styles.name}>{product.name}</div>
-            <div>{product.price} TL</div>
-
-
-            {isFavorite ? (
-                <button className={styles.buttonRemove} onClick={onRemove}>Favoriden çıkar</button>
-            ) : (
-                <button className={styles.button} onClick={handleFavorite}>Favoriye ekle</button>
-            )}
-
-            {!isFavorite && (
-                <button className={styles.button} style={{ marginLeft: '10px' }} onClick={() => addToCart(product.id, 1)}>Sepete Ekle</button>
-            )}
+            <div className={styles.price}>{product.price} TL</div>
         </div>
     );
 }

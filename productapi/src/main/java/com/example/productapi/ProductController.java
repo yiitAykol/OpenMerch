@@ -14,10 +14,14 @@ import org.springframework.web.bind.annotation.RestController;
 public class ProductController{
 
     private final ProductRepository repository;
+    private final CartItemRepository cartItemRepository;
+    private final FavoriteRepository favoriteRepository;
     
     // Spring repository'yi buraya otomatik verir (dependency injection)
-    public ProductController(ProductRepository repository) {
+    public ProductController(ProductRepository repository, CartItemRepository cartItemRepository, FavoriteRepository favoriteRepository) {
         this.repository = repository;
+        this.cartItemRepository = cartItemRepository;
+        this.favoriteRepository = favoriteRepository;
     }
 
     @GetMapping
@@ -51,9 +55,12 @@ public class ProductController{
     }
 
     // Delete a product
+    @org.springframework.transaction.annotation.Transactional
     @DeleteMapping("/{id}")
     public org.springframework.http.ResponseEntity<Void> deleteProduct(@org.springframework.web.bind.annotation.PathVariable Long id) {
         if (repository.existsById(id)) {
+            cartItemRepository.deleteByProductId(id);
+            favoriteRepository.deleteByProductId(id);
             repository.deleteById(id);
             return org.springframework.http.ResponseEntity.ok().build();
         } else {
