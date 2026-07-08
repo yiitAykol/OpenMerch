@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import styles from "./ProductCard.module.scss";
 import { useCart } from "../context/CartContext";
 
@@ -14,9 +14,18 @@ export interface Product {
     category: string; // Kategori alanımız
 }
 
-export default function ProductCard({ product, isFavorite, onRemove }: { product: Product; isFavorite?: boolean; onRemove?: () => void; }) {
-    // Yıldızın dolu/boş olmasını tutan state. Favoriler sayfasında zaten dolu başlar.
-    const [fav, setFav] = useState(!!isFavorite);
+export default function ProductCard({ product, isFavorite, onRemove, favoriteId }: { product: Product; isFavorite?: boolean; onRemove?: () => void; favoriteId?: number | null; }) {
+    // Bu ürünün favori kaydının id'si (null ise favoride değil). Sayfa yenilenince
+    // ana sayfadan gelen favoriteId ile dolu başlar, böylece yıldız kalıcı olur.
+    const [favId, setFavId] = useState<number | null>(favoriteId ?? null);
+
+    // Ana sayfa favorileri geç yüklerse (prop sonradan gelirse) senkronla.
+    useEffect(() => {
+        setFavId(favoriteId ?? null);
+    }, [favoriteId]);
+
+    // Yıldız dolu mu? Favoriler sayfasında isFavorite ile, ana sayfada favId ile.
+    const isFav = isFavorite || favId !== null;
 
     const { addToCart, cart } = useCart();
 
@@ -30,6 +39,19 @@ export default function ProductCard({ product, isFavorite, onRemove }: { product
             return;
         }
 
+        // Zaten favorideyse → favoriden çıkar (kayıt id'siyle sil)
+        if (favId !== null) {
+            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/favorites/${favId}`, {
+                method: "DELETE",
+            });
+            if (res.ok) {
+                setFavId(null);
+                window.dispatchEvent(new Event("favoriteAdded"));
+            }
+            return;
+        }
+
+        // Favoride değilse → favoriye ekle
         const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/favorites`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -37,8 +59,7 @@ export default function ProductCard({ product, isFavorite, onRemove }: { product
         });
         if (res.ok) {
             const data = await res.json();
-            console.log("favori eklendi:", data);
-            setFav(true);
+            setFavId(data.id);
             window.dispatchEvent(new Event("favoriteAdded"));
         } else {
             console.log("favori eklenemedi");
@@ -55,15 +76,15 @@ export default function ProductCard({ product, isFavorite, onRemove }: { product
 
                 {/* Sağ üstte yıldız: tıklayınca favoriye ekler, içi sarı dolar */}
                 <button
-                    className={`${styles.starButton} ${fav ? styles.starActive : ""}`}
+                    className={`${styles.starButton} ${isFav ? styles.starActive : ""}`}
                     onClick={handleStarClick}
-                    aria-label={fav ? "Favoriden çıkar" : "Favoriye ekle"}
+                    aria-label={isFav ? "Favoriden çıkar" : "Favoriye ekle"}
                 >
                     <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
                         <path
                             d="M12 2.5l2.9 5.9 6.5.95-4.7 4.58 1.11 6.47L12 17.9 6.19 20.9l1.11-6.47-4.7-4.58 6.5-.95L12 2.5z"
-                            fill={fav ? "#facc15" : "none"}
-                            stroke={fav ? "#eab308" : "#555"}
+                            fill={isFav ? "#facc15" : "none"}
+                            stroke={isFav ? "#eab308" : "#555"}
                             strokeWidth="1.6"
                             strokeLinejoin="round"
                         />

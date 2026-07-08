@@ -10,8 +10,12 @@
 
 .slider {
     position: relative;
-    width: 100%;          // ← tüm ekranı yatayda kaplar
-    overflow: hidden;     // ← görünmeyen slaytları gizler
+    width: 100%; // ← tüm ekranı yatayda kaplar
+    overflow: hidden; // ← görünmeyen slaytları gizler
+    max-width: 1800px;
+    /* grid/tab bar ile aynı genişlik */
+    margin: 0 auto;
+    /* ortala */
 }
 
 .slidesTrack {
@@ -21,7 +25,7 @@
 
 .slide {
     position: relative;
-    flex: 0 0 100%;       // ← her slayt tam genişlik, yan yana dizilir
+    flex: 0 0 100%; // ← her slayt tam genişlik, yan yana dizilir
     height: clamp(250px, 40vw, 520px); // ← ekrana göre yükseklik
 
     img {
@@ -103,6 +107,10 @@
     gap: 8px;
     padding: 0 8px;
     border-bottom: 1px solid #eeeeee;
+    max-width: 1200px;
+    /* grid ile aynı genişlik */
+    margin: 0 auto;
+    /* ortala */
 }
 
 .arrow {
@@ -142,20 +150,16 @@
     position: relative; // ← offsetLeft hesabı bu kutuya göre olsun
 
     // Kenardaki kesilen sekme sert kare gibi durmasın, yumuşakça solsun
-    mask-image: linear-gradient(
-        to right,
-        transparent 0,
-        #000 24px,
-        #000 calc(100% - 24px),
-        transparent 100%
-    );
-    -webkit-mask-image: linear-gradient(
-        to right,
-        transparent 0,
-        #000 24px,
-        #000 calc(100% - 24px),
-        transparent 100%
-    );
+    mask-image: linear-gradient(to right,
+            transparent 0,
+            #000 24px,
+            #000 calc(100% - 24px),
+            transparent 100%);
+    -webkit-mask-image: linear-gradient(to right,
+            transparent 0,
+            #000 24px,
+            #000 calc(100% - 24px),
+            transparent 100%);
 
     // Alttaki scrollbar'ı gizle (artık oklarla geziyoruz)
     scrollbar-width: none; // Firefox

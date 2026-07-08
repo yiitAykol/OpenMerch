@@ -14,6 +14,8 @@ export default function Home() {
   const [categories, setCategories] = useState<string[]>([]);
   // Ana sayfa banner'ları
   const [banners, setBanners] = useState<{ id: number; imageUrl: string; title: string | null }[]>([]);
+  // productId -> favoriteId eşlemesi (yıldızların dolu başlaması için)
+  const [favMap, setFavMap] = useState<Record<number, number>>({});
   // Slider'da o an gösterilen banner
   const [currentSlide, setCurrentSlide] = useState(0);
   // products state'inin altına ekle
@@ -74,16 +76,24 @@ export default function Home() {
   // useEffect buraya
   useEffect(() => {
     async function load() {
-      const [productsRes, categoriesRes, bannersRes] = await Promise.all([
+      const [productsRes, categoriesRes, bannersRes, favoritesRes] = await Promise.all([
         fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/products`),
         fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/categories`),
         fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/banners`),
+        fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/favorites`),
       ]);
       setProducts(await productsRes.json());
       const categoryData = await categoriesRes.json();
       // Backend {id, name} döndürüyor; sadece isimleri alıyoruz
       setCategories(categoryData.map((c: { name: string }) => c.name));
       setBanners(await bannersRes.json());
+      // Favorileri productId -> favoriteId olarak eşle
+      const favoriteData = await favoritesRes.json();
+      const map: Record<number, number> = {};
+      favoriteData.forEach((f: { id: number; product: { id: number } }) => {
+        map[f.product.id] = f.id;
+      });
+      setFavMap(map);
     }
     load();
   }, []);
@@ -194,7 +204,7 @@ export default function Home() {
 
       <div className={styles.grid}>
         {filteredProducts.map((product) => (
-          <ProductCard key={product.id} product={product} />
+          <ProductCard key={product.id} product={product} favoriteId={favMap[product.id] ?? null} />
         ))}
       </div>
     </>
