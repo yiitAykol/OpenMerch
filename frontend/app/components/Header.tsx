@@ -3,10 +3,12 @@
 import Link from "next/link";
 import styles from "../layout.module.scss";
 import { useCart } from "../context/CartContext";
+import { useAuth } from "../context/AuthContext";
 import { useEffect, useState } from "react";
 
 export default function Header() {
   const { totalItems } = useCart();
+  const { user, logout, loading } = useAuth();
   const [isFlashing, setIsFlashing] = useState(false);
   const [isCartFlashing, setIsCartFlashing] = useState(false);
 
@@ -64,6 +66,35 @@ export default function Header() {
             </svg>
             {totalItems > 0 && <span>({totalItems})</span>}
           </Link>
+
+          {/* Auth durumu: girişliyse kullanıcı adı + çıkış, değilse giriş/üye ol */}
+          {!loading && (
+            user ? (
+              <span style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "14px" }}>
+                <span title="Giriş yapan kullanıcı">👤 {user.username}</span>
+                <button
+                  onClick={logout}
+                  style={{
+                    background: "none",
+                    border: "1px solid currentColor",
+                    borderRadius: "6px",
+                    padding: "3px 8px",
+                    cursor: "pointer",
+                    color: "inherit",
+                    fontSize: "13px",
+                  }}
+                  title="Çıkış yap"
+                >
+                  Çıkış
+                </button>
+              </span>
+            ) : (
+              <span style={{ display: "flex", alignItems: "center", gap: "10px", fontSize: "14px" }}>
+                <Link href="/login" title="Giriş yap">Giriş</Link>
+                <Link href="/register" title="Üye ol">Üye Ol</Link>
+              </span>
+            )
+          )}
         </div>
       </div>
 

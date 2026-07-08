@@ -4,6 +4,7 @@ import "./globals.css";
 import Link from "next/link";
 import styles from "./layout.module.scss";
 import { CartProvider } from "./context/CartContext";
+import { AuthProvider } from "./context/AuthContext";
 import Header from "./components/Header";
 
 const geistSans = Geist({
@@ -33,10 +34,12 @@ export default function RootLayout({
     >
 
     <body>
-      <CartProvider>
-        <Header />
-        {children}
-      </CartProvider>
+      <AuthProvider>
+        <CartProvider>
+          <Header />
+          {children}
+        </CartProvider>
+      </AuthProvider>
     </body>
     
     </html>
