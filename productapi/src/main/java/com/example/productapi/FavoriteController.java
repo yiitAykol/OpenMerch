@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -17,31 +18,36 @@ public class FavoriteController {
 
     private final FavoriteRepository favoriteRepository;
     private final ProductRepository productRepository;
+    private final UserRepository userRepository;
 
     public FavoriteController(FavoriteRepository favoriteRepository,
-                              ProductRepository productRepository) {
+                              ProductRepository productRepository,
+                              UserRepository userRepository) {
         this.favoriteRepository = favoriteRepository;
         this.productRepository = productRepository;
+        this.userRepository = userRepository;
     }
 
-    // Favorileri listele
+    // Bir kullanıcının favorilerini listele  → /api/favorites?userId=1
     @GetMapping
-    public List<Favorite> getAllFavorites() {
-        return favoriteRepository.findAll();
+    public List<Favorite> getFavorites(@RequestParam Long userId) {
+        return favoriteRepository.findByUserId(userId);
     }
 
-    // Favori ekle  → body: { "productId": 1 }
+    // Favori ekle  → body: { "productId": 1, "userId": 1 }
     @PostMapping
     public Favorite addFavorite(@RequestBody Map<String, Long> body) {
 
         Long productId = body.get("productId");
+        Long userId = body.get("userId");
 
-        if (favoriteRepository.existsByProductId(productId)) {
+        if (favoriteRepository.existsByProductIdAndUserId(productId, userId)) {
             throw new RuntimeException("Bu ürün zaten favorilerinizde!");
         }
-        
+
         Product product = productRepository.findById(productId).orElseThrow();
-        Favorite favorite = new Favorite(product);
+        User user = userRepository.findById(userId).orElseThrow();
+        Favorite favorite = new Favorite(user, product);
         return favoriteRepository.save(favorite);
     }
 

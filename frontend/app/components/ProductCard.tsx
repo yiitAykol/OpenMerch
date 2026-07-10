@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import styles from "./ProductCard.module.scss";
 import { useCart } from "../context/CartContext";
+import { useAuth } from "../context/AuthContext";
 
 // 1. BURAYA PRODUCT TİPİNİ EKLİYORUZ
 export interface Product {
@@ -28,6 +29,7 @@ export default function ProductCard({ product, isFavorite, onRemove, favoriteId 
     const isFav = isFavorite || favId !== null;
 
     const { addToCart, cart } = useCart();
+    const { user } = useAuth();
 
     // Bu ürünün sepette kaç adet olduğu (her eklemede otomatik artar)
     const qtyInCart = cart?.items.find((i) => i.product.id === product.id)?.quantity ?? 0;
@@ -51,11 +53,15 @@ export default function ProductCard({ product, isFavorite, onRemove, favoriteId 
             return;
         }
 
-        // Favoride değilse → favoriye ekle
+        // Favoride değilse → favoriye ekle (giriş zorunlu)
+        if (!user) {
+            alert("Favorilere eklemek için giriş yapmalısınız.");
+            return;
+        }
         const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/favorites`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ productId: product.id }),
+            body: JSON.stringify({ productId: product.id, userId: user.id }),
         });
         if (res.ok) {
             const data = await res.json();

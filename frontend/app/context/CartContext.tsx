@@ -1,6 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useState, useEffect } from "react";
+import { useAuth } from "./AuthContext";
 
 type CartItemType = {
   id: number;
@@ -38,10 +39,12 @@ const CartContext = createContext<CartContextProps>({
 
 export const CartProvider = ({ children }: { children: React.ReactNode }) => {
   const [cart, setCart] = useState<CartType | null>(null);
+  const { user } = useAuth();
 
   const fetchCart = async () => {
+    if (!user) return; // giriş yoksa sepet çekme
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/cart?userId=1`);
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/cart?userId=${user.id}`);
       if (res.ok) {
         const data = await res.json();
         setCart(data);
@@ -51,18 +54,24 @@ export const CartProvider = ({ children }: { children: React.ReactNode }) => {
     }
   };
 
+  // Kullanıcı değişince sepeti yenile; çıkışta ekrandan temizle.
   useEffect(() => {
-    fetchCart();
-  }, []);
+    if (user) fetchCart();
+    else setCart(null);
+  }, [user]);
 
   const addToCart = async (productId: number, quantity: number = 1) => {
+    if (!user) {
+      alert("Sepete eklemek için giriş yapmalısınız.");
+      return;
+    }
     try {
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/cart/items`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ productId, quantity, userId: 1 }),
+        body: JSON.stringify({ productId, quantity, userId: user.id }),
       });
       if (res.ok) {
         const data = await res.json();

@@ -1,5 +1,6 @@
 package com.example.productapi;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -16,10 +17,16 @@ public class Favorite {
     @ManyToOne
     private Product product;
 
+    // Favorinin hangi kullanıcıya ait olduğu. JSON'a sızmasına gerek yok.
+    @ManyToOne
+    @JsonIgnore
+    private User user;
+
     public Favorite() {
     }
 
-    public Favorite(Product product) {
+    public Favorite(User user, Product product) {
+        this.user = user;
         this.product = product;
     }
 
@@ -35,5 +42,12 @@ public class Favorite {
     }
     public void setProduct(Product product) {
         this.product = product;
+    }
+
+    public User getUser() {
+        return user;
+    }
+    public void setUser(User user) {
+        this.user = user;
     }
 }

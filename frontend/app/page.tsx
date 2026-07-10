@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
 import ProductCard from "./components/ProductCard"
+import { useAuth } from "./context/AuthContext";
 
 // importlar buraya (useState, useEffect)
 import styles from "./page.module.scss";
@@ -16,6 +17,7 @@ export default function Home() {
   const [banners, setBanners] = useState<{ id: number; imageUrl: string; title: string | null }[]>([]);
   // productId -> favoriteId eşlemesi (yıldızların dolu başlaması için)
   const [favMap, setFavMap] = useState<Record<number, number>>({});
+  const { user } = useAuth();
   // Slider'da o an gösterilen banner
   const [currentSlide, setCurrentSlide] = useState(0);
   // products state'inin altına ekle
@@ -73,30 +75,41 @@ export default function Home() {
       ? products
       : products.filter((p) => p.category === selectedCategory);
 
-  // useEffect buraya
+  // Ürün / kategori / banner herkese açık — bir kez yüklenir.
   useEffect(() => {
     async function load() {
-      const [productsRes, categoriesRes, bannersRes, favoritesRes] = await Promise.all([
+      const [productsRes, categoriesRes, bannersRes] = await Promise.all([
         fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/products`),
         fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/categories`),
         fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/banners`),
-        fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/favorites`),
       ]);
       setProducts(await productsRes.json());
       const categoryData = await categoriesRes.json();
       // Backend {id, name} döndürüyor; sadece isimleri alıyoruz
       setCategories(categoryData.map((c: { name: string }) => c.name));
       setBanners(await bannersRes.json());
-      // Favorileri productId -> favoriteId olarak eşle
-      const favoriteData = await favoritesRes.json();
+    }
+    load();
+  }, []);
+
+  // Favoriler kullanıcıya özel — giriş/çıkışta yıldızları güncelle.
+  useEffect(() => {
+    if (!user) {
+      setFavMap({});
+      return;
+    }
+    const userId = user.id;
+    async function loadFavorites() {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/favorites?userId=${userId}`);
+      const favoriteData = await res.json();
       const map: Record<number, number> = {};
       favoriteData.forEach((f: { id: number; product: { id: number } }) => {
         map[f.product.id] = f.id;
       });
       setFavMap(map);
     }
-    load();
-  }, []);
+    loadFavorites();
+  }, [user]);
 
   // Kategoriler yüklendiğinde / pencere boyutu değiştiğinde okları güncelle
   useEffect(() => {
