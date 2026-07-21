@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
 import styles from "./ProductCard.module.scss";
 import { useCart } from "../context/CartContext";
 import { useAuth } from "../context/AuthContext";
@@ -75,10 +76,17 @@ export default function ProductCard({ product, isFavorite, onRemove, favoriteId 
     return (
         <div className={styles.card}>
             <div className={styles.imageWrap}>
-                {product.imageUrl && (
+
+                {/* {product.imageUrl && (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={product.imageUrl} alt={product.name} className={styles.image} />
-                )}
+                )} */}
+                <Link href={`/products/${product.id}`}>
+                    {product.imageUrl && (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={product.imageUrl} alt={product.name} className={styles.image} />
+                    )}
+                </Link>
 
                 {/* Sağ üstte yıldız: tıklayınca favoriye ekler, içi sarı dolar */}
                 <button
@@ -120,7 +128,9 @@ export default function ProductCard({ product, isFavorite, onRemove, favoriteId 
             </div>
 
             <div className={styles.category}>{product.category}</div>
-            <div className={styles.name}>{product.name}</div>
+            <Link href={`/products/${product.id}`} style={{ textDecoration: "none", color: "inherit" }}>
+                <div className={styles.name}>{product.name}</div>
+            </Link>
             <div className={styles.price}>{product.price} TL</div>
         </div>
     );

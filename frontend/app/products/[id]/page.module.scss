@@ -1,0 +1,116 @@
+.container {
+    // Ekranda ortalanması ve çok büyük ekranlarda yayılmaması için
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 40px 20px;
+
+    // İçerikleri yan yana dizmek için flex kullanıyoruz
+    display: flex;
+    flex-direction: column; // Mobilde alt alta
+    gap: 40px; // Resim ile yazıların arası
+
+    // Tablet ve bilgisayar ekranlarında (768px ve üzeri) yan yana ve dikeyde ortalı olsun
+    @media (min-width: 768px) {
+        flex-direction: row;
+        align-items: center;
+        gap: 80px;
+    }
+}
+
+/* --- SOL TARAF (RESİM) --- */
+.leftColumn {
+    flex: 1; // Genişliğin yarısını kaplar
+    display: flex;
+    justify-content: center; // Resmi bulunduğu alanın ortasında tutar
+}
+
+.imageWrapper {
+    // Resmin belli aralıklarda büyüyüp küçülmesi için kilit nokta burası:
+    width: 100%;
+    max-width: 500px; // Resim en fazla 500px büyüyebilir
+    min-width: 250px; // Resim en az 250px'e kadar küçülebilir
+
+    // Tasarımdaki gibi resmin arkasına çok hafif gri bir kutu efekti verebiliriz
+    background-color: #fcfcfc;
+    padding: 20px;
+
+    img {
+        width: 100%;
+        height: auto;
+        object-fit: contain;
+    }
+}
+
+.rightColumn {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    // EKLENEN KISIM: Mobilde resimle tam alt alta hizalanması için
+    width: 100%;
+    max-width: 500px; // Resimle aynı maksimum genişlik
+    margin: 0 auto; // Mobilde resmi ortaladığımız gibi yazıları da ortalarız
+
+    // Bilgisayar ekranında bu hizalama kuralını iptal ediyoruz ki özgürce yayılsın
+    @media (min-width: 768px) {
+        max-width: none;
+        margin: 0;
+    }
+}
+
+.title {
+    font-size: 2.5rem;
+    font-weight: 400; // Resimdeki gibi ince/zarif bir font ağırlığı
+    color: #333;
+    margin: 0;
+    line-height: 1.2;
+}
+
+.price {
+    font-size: 1.25rem;
+    color: #555;
+    margin: 0;
+}
+
+.description {
+    font-size: 1rem;
+    color: #666;
+    line-height: 1.6;
+}
+
+.buttonGroup {
+    display: flex;
+    flex-direction: column; // Alt alta butonlar
+    gap: 15px;
+    margin-top: 20px;
+    max-width: 400px; // Butonların aşırı uzamasını engeller
+}
+
+.cartButton,
+.favButton {
+    padding: 15px 20px;
+    font-size: 1rem;
+    cursor: pointer;
+    border-radius: 30px; // Tasarımdaki gibi yuvarlak kenarlar
+    transition: all 0.3s ease;
+}
+
+.cartButton {
+    background-color: #fff;
+    color: #333;
+    border: 1px solid #333;
+
+    &:hover {
+        background-color: #f5f5f5;
+    }
+}
+
+.favButton {
+    background-color: #3a393c; // Tasarımdaki mor renk
+    color: #fff;
+    border: none;
+
+    &:hover {
+        background-color: #4a3df0;
+    }
+}

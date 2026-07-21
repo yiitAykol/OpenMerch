@@ -54,6 +54,16 @@ public class ProductController{
         }
     }
 
+    @GetMapping("/{id}")
+    public org.springframework.http.ResponseEntity<Product> getProductById(@org.springframework.web.bind.annotation.PathVariable Long id) {
+        java.util.Optional<Product> optionalProduct = repository.findById(id);
+        if (optionalProduct.isPresent()) {
+            return org.springframework.http.ResponseEntity.ok(optionalProduct.get());
+        } else {
+            return org.springframework.http.ResponseEntity.notFound().build();
+        }
+    }
+
     // Delete a product
     @org.springframework.transaction.annotation.Transactional
     @DeleteMapping("/{id}")
