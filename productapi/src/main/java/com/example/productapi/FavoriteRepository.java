@@ -11,4 +11,7 @@ public interface FavoriteRepository extends JpaRepository<Favorite, Long> {
 
     @org.springframework.transaction.annotation.Transactional
     void deleteByProductId(Long productId);
+
+    @org.springframework.transaction.annotation.Transactional
+    void deleteByUserId(Long userId);
 }

@@ -23,15 +23,21 @@ public class AuthController {
     private final PasswordEncoder passwordEncoder;
     private final EmailService emailService;
     private final JwtService jwtService;
+    private final CartRepository cartRepository;
+    private final FavoriteRepository favoriteRepository;
 
     public AuthController(UserRepository userRepository,
                           PasswordEncoder passwordEncoder,
                           EmailService emailService,
-                          JwtService jwtService) {
+                          JwtService jwtService,
+                          CartRepository cartRepository,
+                          FavoriteRepository favoriteRepository) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.emailService = emailService;
         this.jwtService = jwtService;
+        this.cartRepository = cartRepository;
+        this.favoriteRepository = favoriteRepository;
     }
 
     // ---- İstek gövdeleri (DTO) ----
@@ -53,6 +59,11 @@ public class AuthController {
 
     public static class ResendRequest {
         public String email;
+    }
+
+    public static class ChangePasswordRequest {
+        public String oldPassword;
+        public String newPassword;
     }
 
     // 1) KAYIT: kullanıcıyı devre dışı (enabled=false) oluşturur, kod üretir ve e-posta atar.
@@ -165,6 +176,54 @@ public class AuthController {
                     .body(Map.of("message", "Oturum bulunamadı."));
         }
         return ResponseEntity.ok(publicUser(user));
+    }
+
+    // 6) ŞİFRE DEĞİŞTİRME: Mevcut kullanıcının şifresini doğrular ve günceller.
+    @PostMapping("/change-password")
+    public ResponseEntity<?> changePassword(Authentication authentication, @RequestBody ChangePasswordRequest req) {
+        if (authentication == null || !(authentication.getPrincipal() instanceof User user)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("message", "Oturum bulunamadı."));
+        }
+        
+        if (req.oldPassword == null || req.newPassword == null || req.newPassword.length() < 6) {
+            return ResponseEntity.badRequest().body(Map.of("message", "Eski şifre ve en az 6 karakterlik yeni şifre gereklidir."));
+        }
+
+        User dbUser = userRepository.findById(user.getId()).orElse(null);
+        if (dbUser == null) {
+            return ResponseEntity.badRequest().body(Map.of("message", "Kullanıcı bulunamadı."));
+        }
+
+        if (!passwordEncoder.matches(req.oldPassword, dbUser.getPassword())) {
+            return ResponseEntity.badRequest().body(Map.of("message", "Eski şifre hatalı."));
+        }
+
+        dbUser.setPassword(passwordEncoder.encode(req.newPassword));
+        userRepository.save(dbUser);
+
+        return ResponseEntity.ok(Map.of("message", "Şifre başarıyla güncellendi."));
+    }
+
+    // 7) HESAP SİLME: Mevcut kullanıcının hesabını ve ilişkili verilerini siler.
+    @DeleteMapping("/delete-account")
+    public ResponseEntity<?> deleteAccount(Authentication authentication) {
+        if (authentication == null || !(authentication.getPrincipal() instanceof User user)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("message", "Oturum bulunamadı."));
+        }
+
+        User dbUser = userRepository.findById(user.getId()).orElse(null);
+        if (dbUser == null) {
+            return ResponseEntity.badRequest().body(Map.of("message", "Kullanıcı bulunamadı."));
+        }
+
+        // İlişkili verileri (sepet ve favoriler) temizle ki Foreign Key hatası almayalım.
+        cartRepository.deleteByUserId(dbUser.getId());
+        favoriteRepository.deleteByUserId(dbUser.getId());
+
+        // Son olarak kullanıcıyı sil.
+        userRepository.delete(dbUser);
+
+        return ResponseEntity.ok(Map.of("message", "Hesap başarıyla silindi."));
     }
 
     // ---- Yardımcılar ----
