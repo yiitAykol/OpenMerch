@@ -56,7 +56,7 @@ export default function ProductCard({ product, isFavorite, onRemove, favoriteId 
 
         // Favoride değilse → favoriye ekle (giriş zorunlu)
         if (!user) {
-            alert("Favorilere eklemek için giriş yapmalısınız.");
+            window.dispatchEvent(new Event("loginRequired"));
             return;
         }
         const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/favorites`, {

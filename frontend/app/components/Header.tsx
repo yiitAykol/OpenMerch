@@ -14,6 +14,8 @@ export default function Header() {
   const [isFlashing, setIsFlashing] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [isCartFlashing, setIsCartFlashing] = useState(false);
+  const [showLoginToast, setShowLoginToast] = useState(false);
+
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -27,12 +29,20 @@ export default function Header() {
       setTimeout(() => setIsCartFlashing(false), 300);
     };
 
+    const handleLoginRequired = () => {
+      setShowLoginToast(true);
+      // 3 saniye sonra otomatik kapansın
+      setTimeout(() => setShowLoginToast(false), 3000);
+    };
+
     window.addEventListener("favoriteAdded", handleFavoriteAdded);
     window.addEventListener("cartAdded", handleCartAdded);
+    window.addEventListener("loginRequired", handleLoginRequired);
 
     return () => {
       window.removeEventListener("favoriteAdded", handleFavoriteAdded);
       window.removeEventListener("cartAdded", handleCartAdded);
+      window.removeEventListener("loginRequired", handleLoginRequired);
     };
   }, []);
 
@@ -163,11 +173,35 @@ export default function Header() {
             </div>
           )}
 
-
-
-
-
-
+          {showLoginToast && (
+            <div style={{
+              position: "fixed",
+              top: "80px", // Navbar'ın hemen altı
+              right: "20px",
+              background: "#333",
+              color: "#fff",
+              padding: "15px 20px",
+              borderRadius: "8px",
+              boxShadow: "0 4px 12px rgba(0,0,0,0.2)",
+              zIndex: 9999,
+              display: "flex",
+              flexDirection: "column",
+              gap: "10px",
+              animation: "fadeIn 0.3s ease" // İsteğe bağlı, global.css'te animasyon yoksa fadeinsiz çalışır
+            }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <strong style={{ fontSize: "14px" }}>Giriş Yapmalısınız</strong>
+                <button onClick={() => setShowLoginToast(false)} style={{ background: "none", border: "none", color: "#e9dedeff", cursor: "pointer", fontSize: "16px" }}>×</button>
+              </div>
+              <div style={{ fontSize: "13px", color: "#ddd" }}>
+                Bu işlemi yapmak için lütfen üye olun veya giriş yapın.
+              </div>
+              <div style={{ display: "flex", gap: "10px", marginTop: "5px" }}>
+                <Link href="/login" onClick={() => setShowLoginToast(false)} style={{ fontSize: "13px", background: "#070606ff", color: "rgba(247, 244, 244, 1)", textDecoration: "none", fontWeight: "bold" }}>Giriş Yap</Link>
+                <Link href="/register" onClick={() => setShowLoginToast(false)} style={{ fontSize: "13px", color: "#fff", textDecoration: "underline" }}>Üye Ol</Link>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

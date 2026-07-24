@@ -30,9 +30,9 @@ interface CartContextProps {
 
 const CartContext = createContext<CartContextProps>({
   cart: null,
-  addToCart: () => {},
-  updateQuantity: () => {},
-  removeFromCart: () => {},
+  addToCart: () => { },
+  updateQuantity: () => { },
+  removeFromCart: () => { },
   totalItems: 0,
   totalPrice: 0,
 });
@@ -62,7 +62,7 @@ export const CartProvider = ({ children }: { children: React.ReactNode }) => {
 
   const addToCart = async (productId: number, quantity: number = 1) => {
     if (!user) {
-      alert("Sepete eklemek için giriş yapmalısınız.");
+      window.dispatchEvent(new Event("loginRequired"));
       return;
     }
     try {

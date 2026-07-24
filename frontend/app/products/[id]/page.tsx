@@ -40,7 +40,7 @@ export default function ProductDetailPage() {
     // Favorilere Ekleme Fonksiyonu
     const handleFavorite = async () => {
         if (!user) {
-            console.log("Favorilere eklemek için giriş yapmalısınız.");
+            window.dispatchEvent(new Event("loginRequired"));
             return;
         }
         try {
