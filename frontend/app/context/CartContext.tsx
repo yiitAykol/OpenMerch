@@ -39,12 +39,19 @@ const CartContext = createContext<CartContextProps>({
 
 export const CartProvider = ({ children }: { children: React.ReactNode }) => {
   const [cart, setCart] = useState<CartType | null>(null);
-  const { user } = useAuth();
+  const { user, token } = useAuth(); // token eklendi
+
 
   const fetchCart = async () => {
-    if (!user) return; // giriş yoksa sepet çekme
+    if (!user || !token) return; // giriş yoksa sepet çekme
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/cart?userId=${user.id}`);
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/cart`,
+        {
+          headers: {
+            "Authorization": `Bearer ${token}`
+          }
+        }
+      );
       if (res.ok) {
         const data = await res.json();
         setCart(data);
@@ -70,8 +77,9 @@ export const CartProvider = ({ children }: { children: React.ReactNode }) => {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
         },
-        body: JSON.stringify({ productId, quantity, userId: user.id }),
+        body: JSON.stringify({ productId, quantity }),
       });
       if (res.ok) {
         const data = await res.json();
@@ -87,6 +95,10 @@ export const CartProvider = ({ children }: { children: React.ReactNode }) => {
     try {
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/cart/items/${itemId}?quantity=${quantity}`, {
         method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
       });
       if (res.ok) {
         const data = await res.json();
@@ -101,6 +113,10 @@ export const CartProvider = ({ children }: { children: React.ReactNode }) => {
     try {
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/cart/items/${itemId}`, {
         method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
       });
       if (res.ok) {
         const data = await res.json();

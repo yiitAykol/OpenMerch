@@ -3,6 +3,8 @@ package com.example.productapi;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.security.core.Authentication;
+import org.springframework.http.HttpStatus;
 
 import java.util.Optional;
 
@@ -24,48 +26,37 @@ public class CartController {
 
     // Get Cart for User
     @GetMapping
-    public ResponseEntity<Cart> getCart(@RequestParam(defaultValue = "1") Long userId) {
-        Cart cart = cartRepository.findByUserId(userId);
+    public ResponseEntity<Cart> getCart(Authentication authentication) {
+        if (authentication == null || !(authentication.getPrincipal() instanceof User user)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        
+        Cart cart = cartRepository.findByUserId(user.getId());
         if (cart == null) {
-            Optional<User> user = userRepository.findById(userId);
-            if (user.isPresent()) {
-                cart = new Cart(user.get());
-                cartRepository.save(cart);
-            } else {
-                return ResponseEntity.notFound().build();
-            }
+            cart = new Cart(user);
+            cartRepository.save(cart);
         }
         return ResponseEntity.ok(cart);
     }
 
-    public static class CartItemRequest {
-        public Long productId;
-        public int quantity;
-        public Long userId = 1L;
-    }
-
-    // Add item to Cart
     @PostMapping("/items")
-    public ResponseEntity<Cart> addItemToCart(@RequestBody CartItemRequest request) {
-        Cart cart = cartRepository.findByUserId(request.userId);
+    public ResponseEntity<Cart> addItemToCart(Authentication authentication, @RequestBody CartItemRequest request) {
+        if (authentication == null || !(authentication.getPrincipal() instanceof User user)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        Cart cart = cartRepository.findByUserId(user.getId());
         if (cart == null) {
-            Optional<User> user = userRepository.findById(request.userId);
-            if (user.isPresent()) {
-                cart = new Cart(user.get());
-                cartRepository.save(cart);
-            } else {
-                return ResponseEntity.notFound().build();
-            }
+            cart = new Cart(user);
+            cartRepository.save(cart);
         }
 
         Optional<Product> productOpt = productRepository.findById(request.productId);
         if (productOpt.isEmpty()) {
             return ResponseEntity.badRequest().build();
         }
-
         Product product = productOpt.get();
 
-        // Check if item already exists in cart
         Optional<CartItem> existingItem = cart.getItems().stream()
                 .filter(item -> item.getProduct().getId().equals(product.getId()))
                 .findFirst();
@@ -80,8 +71,9 @@ public class CartController {
             cart.getItems().add(newItem);
         }
 
-        return ResponseEntity.ok(cartRepository.findByUserId(request.userId));
+        return ResponseEntity.ok(cartRepository.findByUserId(user.getId()));
     }
+
 
     // Update quantity
     @PutMapping("/items/{itemId}")
