@@ -11,6 +11,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.security.core.Authentication;
+import org.springframework.http.HttpStatus;
 
 @RestController
 @RequestMapping("/api/favorites")
@@ -30,26 +32,35 @@ public class FavoriteController {
 
     // Bir kullanıcının favorilerini listele  → /api/favorites?userId=1
     @GetMapping
-    public List<Favorite> getFavorites(@RequestParam Long userId) {
-        return favoriteRepository.findByUserId(userId);
+    public List<Favorite> getFavorites(Authentication authentication) {
+        if(authentication == null || !(authentication.getPrincipal() instanceof User user))
+        {
+            throw new RuntimeException("Yetkisiz kullanıcı");
+        }
+        return favoriteRepository.findByUserId(user.getId());
     }
 
-    // Favori ekle  → body: { "productId": 1, "userId": 1 }
+        // addFavorite metodunun DOĞRU hali:
     @PostMapping
-    public Favorite addFavorite(@RequestBody Map<String, Long> body) {
+    public Favorite addFavorite(Authentication authentication, @RequestBody Map<String, Long> body) {
+        
+        // 1. Kapıdaki güvenlik kontrolü (Senin yazdığın kontrolün aynısı)
+        if(authentication == null || !(authentication.getPrincipal() instanceof User user)) {
+            throw new RuntimeException("Yetkisiz kullanıcı");
+        }
 
         Long productId = body.get("productId");
-        Long userId = body.get("userId");
+        Long userId = user.getId(); // Artık 'user' yukarıdaki if'in içinden geliyor.
 
         if (favoriteRepository.existsByProductIdAndUserId(productId, userId)) {
             throw new RuntimeException("Bu ürün zaten favorilerinizde!");
         }
 
         Product product = productRepository.findById(productId).orElseThrow();
-        User user = userRepository.findById(userId).orElseThrow();
         Favorite favorite = new Favorite(user, product);
         return favoriteRepository.save(favorite);
     }
+
 
     // Favoriden çıkar
     @DeleteMapping("/{id}")

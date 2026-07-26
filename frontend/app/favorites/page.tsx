@@ -7,7 +7,7 @@ import { useAuth } from "../context/AuthContext";
 export default function FavoritesPage() {
   // 1. önce state
   const [favorites, setFavorites] = useState<any[]>([]);
-  const { user, loading } = useAuth();
+  const { user, token, loading } = useAuth();
 
   // 2. sonra effect (veriyi çeker) — giriş yapan kullanıcının favorileri
   useEffect(() => {
@@ -15,9 +15,14 @@ export default function FavoritesPage() {
       setFavorites([]);
       return;
     }
-    const userId = user.id;
     async function load() {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/favorites?userId=${userId}`);
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/favorites`,
+        {
+          headers: {
+            "Authorization": `Bearer ${token}`
+          }
+        }
+      );
       const data = await res.json();
       setFavorites(data);
     }
@@ -27,6 +32,9 @@ export default function FavoritesPage() {
   async function handleRemove(favoriteId: number) {
     await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/favorites/${favoriteId}`, {
       method: "DELETE",
+      headers: {
+        "Authorization": `Bearer ${token}`
+      }
     });
     setFavorites(favorites.filter((f) => f.id !== favoriteId));
   }

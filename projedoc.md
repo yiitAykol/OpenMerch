@@ -32,12 +32,12 @@ Bu doküman, Spring Boot ve Next.js kullanılarak geliştirilen "StackBootProjec
 1. **Ürün Listeleme (Product Listing)**
    - Backend'den çekilen ürünlerin (`ProductCard` bileşeni ile) grid veya liste şeklinde ana sayfada gösterilmesi.
 
-2. **Favori Sistemi (Favorites)**
-   - Ürünleri favorilere ekleme ve çıkarma yeteneği.
+2. **Favori Sistemi (Favorites) - *[GÜNCELLENDİ]* **
+   - **Güvenli Altyapı:** Ürünleri favorilere ekleme ve çıkarma yeteneği JWT token entegrasyonu ile güvenli hale getirilmiştir.
    - Favoriye eklenmiş ürünlerin ayrı bir sayfada (`/favorites`) listelenmesi.
 
-3. **Sepet Yönetimi (Cart Management) - *[YENİ]* **
-   - **Varsayılan Kullanıcı Altyapısı:** Login/Kayıt sistemi henüz entegre edilmediği için geçici olarak ID'si 1 olan bir "Default User" üzerinden sepetin veritabanında (backend) kalıcı olarak tutulması.
+3. **Sepet Yönetimi (Cart Management) - *[GÜNCELLENDİ]* **
+   - **Güvenli Kullanıcı Altyapısı:** Login/Kayıt sistemi sepete tamamen entegre edilmiştir. Artık güvensiz `userId` parametresi yerine isteklerin başlığında (Header) **JWT Token** kullanılarak, giriş yapan kullanıcının veritabanındaki kendi sepeti yönetilir.
    - **Global Sepet State'i:** `CartContext` sayesinde uygulamanın her yerinden (Header, Ürün Kartı, Sepet Sayfası) sepet verilerine anlık erişim.
    - **Gerçek Zamanlı Header:** Navigasyon barında (Header) sepetteki anlık ürün sayısının dinamik gösterimi.
    - **Detaylı Sepet Sayfası (`/cart`):**
@@ -70,11 +70,11 @@ Backend tarafında JPA kullanılarak veritabanı tabloları ile nesneler eşleş
 | **POST** | `/api/auth/resend` | Doğrulama kodunu yeniden gönderir. Gövde: `{email}`. |
 | **GET** | `/api/auth/me` | **(Korumalı)** `Authorization: Bearer <token>` ile gelen kullanıcının bilgisini döner. |
 | **GET** | `/api/products` | Tüm ürünleri listeler. |
-| **POST** | `/api/favorites` | Bir ürünü favorilere ekler. |
-| **GET** | `/api/cart?userId=1` | Belirtilen kullanıcının sepetini ve içindeki öğeleri getirir. |
-| **POST** | `/api/cart/items` | Sepete yeni ürün ekler (veya miktarını artırır). |
-| **PUT** | `/api/cart/items/{itemId}?quantity=X` | Sepetteki bir ürünün miktarını günceller. |
-| **DELETE** | `/api/cart/items/{itemId}` | İlgili ürünü sepetten tamamen çıkartır. |
+| **GET/POST/DELETE** | `/api/favorites` | **(Korumalı)** Kullanıcının favorilerini yönetir. (`userId` parametresi iptal edildi, JWT'den okunur). |
+| **GET** | `/api/cart` | **(Korumalı)** Giriş yapan kullanıcının (Token üzerinden) sepetini ve içindeki öğeleri getirir. |
+| **POST** | `/api/cart/items` | **(Korumalı)** Sepete yeni ürün ekler (veya miktarını artırır). |
+| **PUT** | `/api/cart/items/{itemId}?quantity=X` | **(Korumalı)** Sepetteki bir ürünün miktarını günceller. |
+| **DELETE** | `/api/cart/items/{itemId}` | **(Korumalı)** İlgili ürünü sepetten tamamen çıkartır. |
 
 ---
 

@@ -39,6 +39,8 @@ public class SecurityConfig {
                         .requestMatchers("/api/auth/**").permitAll()
                         // Favori ve sepet uç noktaları giriş gerektiriyor.
                         .requestMatchers("/api/cart/**").authenticated()
+                        
+                        .requestMatchers("/api/favorites/**").authenticated()
                         // Vitrin gezinmesini bozmamak için diğer uç noktalar açık kalıyor.
                         .anyRequest().permitAll()
                 )
