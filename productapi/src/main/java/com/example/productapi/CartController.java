@@ -39,6 +39,11 @@ public class CartController {
         return ResponseEntity.ok(cart);
     }
 
+    public static class CartItemRequest {
+        public Long productId;
+        public int quantity;
+    }
+
     @PostMapping("/items")
     public ResponseEntity<Cart> addItemToCart(Authentication authentication, @RequestBody CartItemRequest request) {
         if (authentication == null || !(authentication.getPrincipal() instanceof User user)) {

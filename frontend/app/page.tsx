@@ -17,7 +17,7 @@ export default function Home() {
   const [banners, setBanners] = useState<{ id: number; imageUrl: string; title: string | null }[]>([]);
   // productId -> favoriteId eşlemesi (yıldızların dolu başlaması için)
   const [favMap, setFavMap] = useState<Record<number, number>>({});
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   // Slider'da o an gösterilen banner
   const [currentSlide, setCurrentSlide] = useState(0);
   // products state'inin altına ekle
@@ -94,13 +94,14 @@ export default function Home() {
 
   // Favoriler kullanıcıya özel — giriş/çıkışta yıldızları güncelle.
   useEffect(() => {
-    if (!user) {
+    if (!user || !token) {
       setFavMap({});
       return;
     }
-    const userId = user.id;
     async function loadFavorites() {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/favorites?userId=${userId}`);
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/favorites`, {
+        headers: { "Authorization": `Bearer ${token}` }
+      });
       const favoriteData = await res.json();
       const map: Record<number, number> = {};
       favoriteData.forEach((f: { id: number; product: { id: number } }) => {
