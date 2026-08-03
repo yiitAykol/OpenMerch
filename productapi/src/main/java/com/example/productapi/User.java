@@ -34,6 +34,9 @@ public class User {
     @Column(nullable = false, columnDefinition = "boolean not null default false")
     private boolean enabled = false;
 
+    @Column(nullable = false, columnDefinition = "varchar(20) not null default 'USER'")
+    private String role = "USER";
+
     // E-postaya gönderilen 6 haneli doğrulama kodu (doğrulandıktan sonra temizlenir).
     @JsonIgnore
     private String verificationCode;
@@ -105,5 +108,12 @@ public class User {
     }
     public void setVerificationExpiry(Instant verificationExpiry) {
         this.verificationExpiry = verificationExpiry;
+    }
+
+    public String getRole() {
+        return role;
+    }
+    public void setRole(String role) {
+        this.role = role;
     }
 }

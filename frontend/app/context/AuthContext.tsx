@@ -6,6 +6,7 @@ type AuthUser = {
   id: number;
   username: string;
   email: string;
+  role: string;
 };
 
 // Backend'in { message, token?, user? } döndüğü ortak yanıt tipi.
@@ -35,7 +36,7 @@ const AuthContext = createContext<AuthContextProps>({
   verify: async () => ({ ok: false, message: "" }),
   resend: async () => ({ ok: false, message: "" }),
   login: async () => ({ ok: false, message: "" }),
-  logout: () => {},
+  logout: () => { },
 });
 
 const API = process.env.NEXT_PUBLIC_API_URL;
@@ -65,7 +66,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           setToken(null);
         }
       })
-      .catch(() => {})
+      .catch(() => { })
       .finally(() => setLoading(false));
   }, []);
 

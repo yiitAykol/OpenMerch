@@ -247,6 +247,7 @@ public class AuthController {
         return Map.of(
                 "id", user.getId(),
                 "username", user.getUsername(),
-                "email", user.getEmail());
+                "email", user.getEmail(),
+                "role", user.getRole()==null ? "USER" : user.getRole());
     }
 }
