@@ -5,6 +5,7 @@ import Link from "next/link";
 import styles from "./ProductCard.module.scss";
 import { useCart } from "../context/CartContext";
 import { useAuth } from "../context/AuthContext";
+import { useApi } from "../lib/useApi";
 
 // 1. BURAYA PRODUCT TİPİNİ EKLİYORUZ
 export interface Product {
@@ -30,7 +31,8 @@ export default function ProductCard({ product, isFavorite, onRemove, favoriteId 
     const isFav = isFavorite || favId !== null;
 
     const { addToCart, cart } = useCart();
-    const { user, token } = useAuth();
+    const { user } = useAuth();
+    const apiFetch = useApi();
 
     // Bu ürünün sepette kaç adet olduğu (her eklemede otomatik artar)
     const qtyInCart = cart?.items.find((i) => i.product.id === product.id)?.quantity ?? 0;
@@ -44,7 +46,7 @@ export default function ProductCard({ product, isFavorite, onRemove, favoriteId 
 
         // Zaten favorideyse → favoriden çıkar (kayıt id'siyle sil)
         if (favId !== null) {
-            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/favorites/${favId}`, {
+            const res = await apiFetch(`/api/favorites/${favId}`, {
                 method: "DELETE",
             });
             if (res.ok) {
@@ -59,9 +61,8 @@ export default function ProductCard({ product, isFavorite, onRemove, favoriteId 
             window.dispatchEvent(new Event("loginRequired"));
             return;
         }
-        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/favorites`, {
+        const res = await apiFetch(`/api/favorites`, {
             method: "POST",
-            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
             body: JSON.stringify({ productId: product.id }),
         });
         if (res.ok) {

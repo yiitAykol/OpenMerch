@@ -3,10 +3,12 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "../context/AuthContext";
+import { useApi } from "../lib/useApi";
 
 export default function AccountPage() {
   const { user, loading, logout } = useAuth();
   const router = useRouter();
+  const apiFetch = useApi();
 
   // Şifre değiştirme formu için state'ler
   const [showPasswordForm, setShowPasswordForm] = useState(false);
@@ -34,13 +36,8 @@ export default function AccountPage() {
     setPasswordMessage("");
 
     try {
-      const token = localStorage.getItem("sb_token");
-      const res = await fetch("http://localhost:8080/api/auth/change-password", {
+      const res = await apiFetch("/api/auth/change-password", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
-        },
         body: JSON.stringify({ oldPassword, newPassword })
       });
 
@@ -62,13 +59,7 @@ export default function AccountPage() {
 
   const handleDeleteAccount = async () => {
     try {
-      const token = localStorage.getItem("sb_token");
-      const res = await fetch("http://localhost:8080/api/auth/delete-account", {
-        method: "DELETE",
-        headers: {
-          "Authorization": `Bearer ${token}`
-        }
-      });
+      const res = await apiFetch("/api/auth/delete-account", { method: "DELETE" });
 
       if (res.ok) {
         logout();

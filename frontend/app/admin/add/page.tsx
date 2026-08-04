@@ -4,11 +4,13 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import styles from "../admin.module.scss";
+import { useApi } from "../../lib/useApi";
 
 type Category = { id: number; name: string };
 
 export default function AddProductPage() {
   const router = useRouter();
+  const apiFetch = useApi();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [categories, setCategories] = useState<Category[]>([]);
   const [formData, setFormData] = useState({
@@ -49,11 +51,8 @@ export default function AddProductPage() {
     setIsSubmitting(true);
 
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/products`, {
+      const res = await apiFetch("/api/products", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
         body: JSON.stringify({
           ...formData,
           price: parseFloat(formData.price),

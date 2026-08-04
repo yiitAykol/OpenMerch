@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { useCart } from "../../context/CartContext";
 import { useAuth } from "../../context/AuthContext";
 import styles from "./page.module.scss";
+import { useApi } from "@/app/lib/useApi";
 
 export default function ProductDetailPage() {
     const params = useParams();
@@ -12,15 +13,18 @@ export default function ProductDetailPage() {
 
     const [product, setProduct] = useState<any>(null);
     const [loading, setLoading] = useState(true);
+    // Bu ürünün favori kaydının id'si. null ise favoride değil.
+    const [favId, setFavId] = useState<number | null>(null);
 
     // Gerçek sepet ve kullanıcı bilgisi için context'leri çekiyoruz
     const { addToCart } = useCart();
     const { user } = useAuth();
+    const apiFetch = useApi();
 
     useEffect(() => {
         async function fetchProduct() {
             try {
-                const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/products/${productId}`);
+                const res = await apiFetch(`/api/products/${productId}`);
                 if (res.ok) {
                     const data = await res.json();
                     setProduct(data);
@@ -37,25 +41,58 @@ export default function ProductDetailPage() {
         }
     }, [productId]);
 
-    // Favorilere Ekleme Fonksiyonu
+    // Kullanıcı veya ürün değişince: bu ürün favorilerde mi?
+    useEffect(() => {
+        if (!user || !product) {
+            setFavId(null);
+            return;
+        }
+        async function loadFavoriteState() {
+            const res = await apiFetch("/api/favorites");
+            if (!res.ok) return;
+            const data = await res.json();
+            const match = data.find(
+                (f: { id: number; product: { id: number } }) => f.product.id === product.id
+            );
+            setFavId(match ? match.id : null);
+        }
+        loadFavoriteState();
+    }, [user, product]);
+
+    // Favoriye ekle / favoriden çıkar (duruma göre)
     const handleFavorite = async () => {
         if (!user) {
             window.dispatchEvent(new Event("loginRequired"));
             return;
         }
         try {
-            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/favorites`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ productId: product.id, userId: user.id }),
-            });
+            // Favorideyse → çıkar
+            if (favId !== null) {
+                const res = await apiFetch(`/api/favorites/${favId}`, { method: "DELETE" });
+                if (res.ok) {
+                    setFavId(null);
+                    window.dispatchEvent(new Event("favoriteAdded"));
+                } else {
+                    console.error("Favoriden çıkarılamadı:", res.status);
+                }
+                return;
+            }
 
+            // Favoride değilse → ekle
+            const res = await apiFetch("/api/favorites", {
+                method: "POST",
+                body: JSON.stringify({ productId: product.id }),
+            });
             if (res.ok) {
-                // Favoriler sayfasının haberdar olması için eventi tetikliyoruz
+                // Dönen kaydın id'sini sakla ki sayfayı yenilemeden çıkarabilelim
+                const data = await res.json();
+                setFavId(data.id);
                 window.dispatchEvent(new Event("favoriteAdded"));
+            } else {
+                console.error("Favoriye eklenemedi:", res.status);
             }
         } catch (error) {
-            console.error("Favori eklenemedi:", error);
+            console.error("Favori işlemi başarısız:", error);
         }
     };
 
@@ -93,7 +130,7 @@ export default function ProductDetailPage() {
                         className={styles.favButton}
                         onClick={handleFavorite}
                     >
-                        Favorilere Ekle
+                        {favId !== null ? "Favoriden Çıkar" : "Favorilere Ekle"}
                     </button>
                 </div>
             </div>

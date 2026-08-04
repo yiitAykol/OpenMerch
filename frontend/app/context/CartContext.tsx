@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect } from "react";
 import { useAuth } from "./AuthContext";
+import { useApi } from "@/app/lib/useApi";
 
 type CartItemType = {
   id: number;
@@ -42,16 +43,12 @@ export const CartProvider = ({ children }: { children: React.ReactNode }) => {
   const { user, token } = useAuth(); // token eklendi
 
 
+  const apiFetch = useApi();
+
   const fetchCart = async () => {
     if (!user || !token) return; // giriş yoksa sepet çekme
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/cart`,
-        {
-          headers: {
-            "Authorization": `Bearer ${token}`
-          }
-        }
-      );
+      const res = await apiFetch(`/api/cart`);
       if (res.ok) {
         const data = await res.json();
         setCart(data);
@@ -73,12 +70,8 @@ export const CartProvider = ({ children }: { children: React.ReactNode }) => {
       return;
     }
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/cart/items`, {
+      const res = await apiFetch(`/api/cart/items`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
-        },
         body: JSON.stringify({ productId, quantity }),
       });
       if (res.ok) {
@@ -93,12 +86,8 @@ export const CartProvider = ({ children }: { children: React.ReactNode }) => {
 
   const updateQuantity = async (itemId: number, quantity: number) => {
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/cart/items/${itemId}?quantity=${quantity}`, {
+      const res = await apiFetch(`/api/cart/items/${itemId}?quantity=${quantity}`, {
         method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
-        },
       });
       if (res.ok) {
         const data = await res.json();
@@ -111,12 +100,8 @@ export const CartProvider = ({ children }: { children: React.ReactNode }) => {
 
   const removeFromCart = async (itemId: number) => {
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/cart/items/${itemId}`, {
+      const res = await apiFetch(`/api/cart/items/${itemId}`, {
         method: "DELETE",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
-        },
       });
       if (res.ok) {
         const data = await res.json();

@@ -3,10 +3,12 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import styles from "../admin.module.scss";
+import { useApi } from "../../lib/useApi";
 
 type Category = { id: number; name: string };
 
 export default function CategoriesPage() {
+  const apiFetch = useApi();
   const [categories, setCategories] = useState<Category[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [newName, setNewName] = useState("");
@@ -35,9 +37,8 @@ export default function CategoriesPage() {
     setIsSubmitting(true);
 
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/categories`, {
+      const res = await apiFetch("/api/categories", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: newName.trim() }),
       });
 
@@ -64,9 +65,7 @@ export default function CategoriesPage() {
     }
 
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/categories/${id}`, {
-        method: "DELETE",
-      });
+      const res = await apiFetch(`/api/categories/${id}`, { method: "DELETE" });
       if (res.ok) {
         setCategories(prev => prev.filter(c => c.id !== id));
       } else {

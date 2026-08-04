@@ -80,33 +80,63 @@ public class CartController {
     }
 
 
-    // Update quantity
+        // Update quantity
     @PutMapping("/items/{itemId}")
-    public ResponseEntity<Cart> updateItemQuantity(@PathVariable Long itemId, @RequestParam int quantity) {
-        Optional<CartItem> itemOpt = cartItemRepository.findById(itemId);
-        if (itemOpt.isPresent()) {
-            CartItem item = itemOpt.get();
-            if (quantity <= 0) {
-                cartItemRepository.delete(item);
-            } else {
-                item.setQuantity(quantity);
-                cartItemRepository.save(item);
-            }
-            return ResponseEntity.ok(cartRepository.findByUserId(item.getCart().getUser().getId()));
+    public ResponseEntity<Cart> updateItemQuantity(Authentication authentication,
+                                                   @PathVariable Long itemId,
+                                                   @RequestParam int quantity) {
+        // 1) Kimlik: isteği kim yapıyor?
+        if (authentication == null || !(authentication.getPrincipal() instanceof User user)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
-        return ResponseEntity.notFound().build();
+
+        // 2) Nesneyi bul
+        Optional<CartItem> itemOpt = cartItemRepository.findById(itemId);
+        if (itemOpt.isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+        CartItem item = itemOpt.get();
+
+        // 3) Sahiplik: bu kalem gerçekten bu kullanıcının sepetinde mi?
+        if (!item.getCart().getUser().getId().equals(user.getId())) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+
+        // 4) İşlem
+        if (quantity <= 0) {
+            cartItemRepository.delete(item);
+        } else {
+            item.setQuantity(quantity);
+            cartItemRepository.save(item);
+        }
+
+        return ResponseEntity.ok(cartRepository.findByUserId(user.getId()));
     }
+
 
     // Remove item
     @DeleteMapping("/items/{itemId}")
-    public ResponseEntity<Cart> removeItem(@PathVariable Long itemId) {
-        Optional<CartItem> itemOpt = cartItemRepository.findById(itemId);
-        if (itemOpt.isPresent()) {
-            CartItem item = itemOpt.get();
-            Long userId = item.getCart().getUser().getId();
-            cartItemRepository.delete(item);
-            return ResponseEntity.ok(cartRepository.findByUserId(userId));
+    public ResponseEntity<Cart> removeItem(Authentication authentication, @PathVariable Long itemId) {
+        // 1) Kimlik
+        if (authentication == null || !(authentication.getPrincipal() instanceof User user)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
-        return ResponseEntity.notFound().build();
+
+        // 2) Nesneyi bul
+        Optional<CartItem> itemOpt = cartItemRepository.findById(itemId);
+        if (itemOpt.isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+        CartItem item = itemOpt.get();
+
+        // 3) Sahiplik
+        if (!item.getCart().getUser().getId().equals(user.getId())) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+
+        // 4) İşlem
+        cartItemRepository.delete(item);
+        return ResponseEntity.ok(cartRepository.findByUserId(user.getId()));
     }
+
 }

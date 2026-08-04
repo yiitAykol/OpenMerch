@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.security.core.Authentication;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 
 @RestController
 @RequestMapping("/api/favorites")
@@ -30,41 +31,63 @@ public class FavoriteController {
         this.userRepository = userRepository;
     }
 
-    // Bir kullanıcının favorilerini listele  → /api/favorites?userId=1
+    // Bir kullanıcının favorilerini listele
     @GetMapping
-    public List<Favorite> getFavorites(Authentication authentication) {
-        if(authentication == null || !(authentication.getPrincipal() instanceof User user))
-        {
-            throw new RuntimeException("Yetkisiz kullanıcı");
+    public ResponseEntity<List<Favorite>> getFavorites(Authentication authentication) {
+        if (authentication == null || !(authentication.getPrincipal() instanceof User user)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
-        return favoriteRepository.findByUserId(user.getId());
+        return ResponseEntity.ok(favoriteRepository.findByUserId(user.getId()));
     }
 
-        // addFavorite metodunun DOĞRU hali:
     @PostMapping
-    public Favorite addFavorite(Authentication authentication, @RequestBody Map<String, Long> body) {
-        
-        // 1. Kapıdaki güvenlik kontrolü (Senin yazdığın kontrolün aynısı)
-        if(authentication == null || !(authentication.getPrincipal() instanceof User user)) {
-            throw new RuntimeException("Yetkisiz kullanıcı");
+    public ResponseEntity<?> addFavorite(Authentication authentication, @RequestBody Map<String, Long> body) {
+        if (authentication == null || !(authentication.getPrincipal() instanceof User user)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
 
         Long productId = body.get("productId");
-        Long userId = user.getId(); // Artık 'user' yukarıdaki if'in içinden geliyor.
-
-        if (favoriteRepository.existsByProductIdAndUserId(productId, userId)) {
-            throw new RuntimeException("Bu ürün zaten favorilerinizde!");
+        if (productId == null) {
+            return ResponseEntity.badRequest().body(Map.of("message", "productId zorunludur."));
         }
 
-        Product product = productRepository.findById(productId).orElseThrow();
-        Favorite favorite = new Favorite(user, product);
-        return favoriteRepository.save(favorite);
+        if (favoriteRepository.existsByProductIdAndUserId(productId, user.getId())) {
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                    .body(Map.of("message", "Bu ürün zaten favorilerinizde."));
+        }
+
+        Product product = productRepository.findById(productId).orElse(null);
+        if (product == null) {
+            return ResponseEntity.badRequest().body(Map.of("message", "Ürün bulunamadı."));
+        }
+
+        return ResponseEntity.ok(favoriteRepository.save(new Favorite(user, product)));
     }
+
 
 
     // Favoriden çıkar
     @DeleteMapping("/{id}")
-    public void deleteFavorite(@PathVariable Long id) {
-        favoriteRepository.deleteById(id);
+    public ResponseEntity<Void> deleteFavorite(Authentication authentication, @PathVariable Long id) {
+        // 1) Kimlik
+        if (authentication == null || !(authentication.getPrincipal() instanceof User user)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        // 2) Nesneyi bul
+        Favorite favorite = favoriteRepository.findById(id).orElse(null);
+        if (favorite == null) {
+            return ResponseEntity.notFound().build();
+        }
+
+        // 3) Sahiplik
+        if (favorite.getUser() == null || !favorite.getUser().getId().equals(user.getId())) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+
+        // 4) İşlem
+        favoriteRepository.delete(favorite);
+        return ResponseEntity.noContent().build();
     }
+
 }

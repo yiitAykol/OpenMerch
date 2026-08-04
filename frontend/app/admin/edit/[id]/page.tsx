@@ -4,9 +4,11 @@ import { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
 import styles from "../../admin.module.scss";
+import { useApi } from "../../../lib/useApi";
 
 export default function EditProductPage() {
   const router = useRouter();
+  const apiFetch = useApi();
   const params = useParams();
   const id = params.id;
 
@@ -78,11 +80,8 @@ export default function EditProductPage() {
     setIsSubmitting(true);
 
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/products/${id}`, {
+      const res = await apiFetch(`/api/products/${id}`, {
         method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
         body: JSON.stringify({
           ...formData,
           price: parseFloat(formData.price),

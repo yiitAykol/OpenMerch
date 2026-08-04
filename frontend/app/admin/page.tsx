@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import styles from "./admin.module.scss";
+import { useApi } from "../lib/useApi";
 
 type Product = {
   id: number;
@@ -15,10 +16,11 @@ type Product = {
 export default function AdminPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const apiFetch = useApi();
 
   const fetchProducts = async () => {
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/products`);
+      const res = await apiFetch("/api/products");
       if (res.ok) {
         const data = await res.json();
         setProducts(data);
@@ -40,10 +42,10 @@ export default function AdminPage() {
     }
 
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/products/${id}`, {
+      const res = await apiFetch(`/api/products/${id}`, {
         method: "DELETE",
       });
-      
+
       if (res.ok) {
         setProducts(products.filter(p => p.id !== id));
       } else {
@@ -89,10 +91,10 @@ export default function AdminPage() {
           {products.map((product) => (
             <tr key={product.id}>
               <td>
-                <img 
-                  src={product.imageUrl} 
-                  alt={product.name} 
-                  className={styles.productImage} 
+                <img
+                  src={product.imageUrl}
+                  alt={product.name}
+                  className={styles.productImage}
                   onError={(e) => {
                     (e.target as HTMLImageElement).src = 'https://via.placeholder.com/60';
                   }}
@@ -110,8 +112,8 @@ export default function AdminPage() {
                   <Link href={`/admin/edit/${product.id}`} className={styles.editBtn}>
                     Düzenle
                   </Link>
-                  <button 
-                    onClick={() => handleDelete(product.id)} 
+                  <button
+                    onClick={() => handleDelete(product.id)}
                     className={styles.deleteBtn}
                   >
                     Sil

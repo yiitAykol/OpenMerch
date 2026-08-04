@@ -3,10 +3,12 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import styles from "../admin.module.scss";
+import { useApi } from "../../lib/useApi";
 
 type Banner = { id: number; imageUrl: string; title: string | null };
 
 export default function BannersPage() {
+    const apiFetch = useApi();
     const [banners, setBanners] = useState<Banner[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [imageUrl, setImageUrl] = useState("");
@@ -36,9 +38,8 @@ export default function BannersPage() {
         setIsSubmitting(true);
 
         try {
-            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/banners`, {
+            const res = await apiFetch("/api/banners", {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ imageUrl: imageUrl.trim(), title: title.trim() }),
             });
 
@@ -65,9 +66,7 @@ export default function BannersPage() {
         }
 
         try {
-            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/banners/${id}`, {
-                method: "DELETE",
-            });
+            const res = await apiFetch(`/api/banners/${id}`, { method: "DELETE" });
             if (res.ok) {
                 setBanners(prev => prev.filter(b => b.id !== id));
             } else {

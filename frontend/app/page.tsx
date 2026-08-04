@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef } from "react";
 import ProductCard from "./components/ProductCard"
 import { useAuth } from "./context/AuthContext";
-
+import { useApi } from "@/app/lib/useApi";
 // importlar buraya (useState, useEffect)
 import styles from "./page.module.scss";
 const tabColors = ["#e4ddddff", "#d5e3eeff", "#e3ece4ff", "#f0ebe4ff", "#e1cdefff", "#d5e9e8ff"];
@@ -28,6 +28,7 @@ export default function Home() {
   // Okların görünürlüğü: o yöne kaydırılacak yer var mı?
   const [canLeft, setCanLeft] = useState(false);
   const [canRight, setCanRight] = useState(false);
+  const apiFetch = useApi();
 
   const updateArrows = () => {
     const el = tabBarRef.current;
@@ -99,8 +100,7 @@ export default function Home() {
       return;
     }
     async function loadFavorites() {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/favorites`, {
-        headers: { "Authorization": `Bearer ${token}` }
+      const res = await apiFetch(`/api/favorites`, {
       });
       const favoriteData = await res.json();
       const map: Record<number, number> = {};

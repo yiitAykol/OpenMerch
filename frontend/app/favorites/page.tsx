@@ -3,12 +3,13 @@ import { useState, useEffect } from "react";
 import ProductCard from "../components/ProductCard";
 import styles from "../page.module.scss";
 import { useAuth } from "../context/AuthContext";
+import { useApi } from "@/app/lib/useApi";
 
 export default function FavoritesPage() {
   // 1. önce state
   const [favorites, setFavorites] = useState<any[]>([]);
-  const { user, token, loading } = useAuth();
-
+  const { user, loading } = useAuth();
+  const apiFetch = useApi();
   // 2. sonra effect (veriyi çeker) — giriş yapan kullanıcının favorileri
   useEffect(() => {
     if (!user) {
@@ -16,13 +17,7 @@ export default function FavoritesPage() {
       return;
     }
     async function load() {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/favorites`,
-        {
-          headers: {
-            "Authorization": `Bearer ${token}`
-          }
-        }
-      );
+      const res = await apiFetch(`/api/favorites`);
       const data = await res.json();
       setFavorites(data);
     }
@@ -30,11 +25,8 @@ export default function FavoritesPage() {
   }, [user]);
 
   async function handleRemove(favoriteId: number) {
-    await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/favorites/${favoriteId}`, {
+    await apiFetch(`/api/favorites/${favoriteId}`, {
       method: "DELETE",
-      headers: {
-        "Authorization": `Bearer ${token}`
-      }
     });
     setFavorites(favorites.filter((f) => f.id !== favoriteId));
   }
