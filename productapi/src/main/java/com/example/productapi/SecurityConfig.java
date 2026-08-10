@@ -50,7 +50,7 @@ public class SecurityConfig {
             .requestMatchers("/api/cart/**").authenticated()
             .requestMatchers("/api/favorites/**").authenticated()
 
-            .anyRequest().permitAll()
+            .anyRequest().authenticated()
             )
 
             // Kendi JWT filtremizi zincire ekliyoruz.

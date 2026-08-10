@@ -51,16 +51,28 @@ public class CartController {
         }
 
         Cart cart = cartRepository.findByUserId(user.getId());
-        if (cart == null) {
-            cart = new Cart(user);
-            cartRepository.save(cart);
+
+        if(request.productId == null)
+        {
+            return ResponseEntity.badRequest().build();
         }
+
+        if(request.quantity <= 0 || request.quantity > 100)
+        {
+            return ResponseEntity.badRequest().build();
+        }
+
 
         Optional<Product> productOpt = productRepository.findById(request.productId);
         if (productOpt.isEmpty()) {
             return ResponseEntity.badRequest().build();
         }
         Product product = productOpt.get();
+        
+        if (cart == null) {
+            cart = new Cart(user);
+            cartRepository.save(cart);
+        }
 
         Optional<CartItem> existingItem = cart.getItems().stream()
                 .filter(item -> item.getProduct().getId().equals(product.getId()))
