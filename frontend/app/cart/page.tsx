@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCart } from "../context/CartContext";
 
 export default function CartPage() {
@@ -58,6 +59,23 @@ export default function CartPage() {
 
       <div style={{ marginTop: '2rem', textAlign: 'right', fontSize: '1.2rem' }}>
         <strong>Genel Toplam: {totalPrice.toFixed(2)} TL</strong>
+      </div>
+
+      <div style={{ marginTop: '1.5rem', textAlign: 'right' }}>
+        <Link
+          href="/checkout"
+          style={{
+            display: 'inline-block',
+            padding: '12px 28px',
+            background: '#4f46e5',
+            color: '#fff',
+            borderRadius: '8px',
+            fontWeight: 600,
+            textDecoration: 'none',
+          }}
+        >
+          Siparişi Tamamla
+        </Link>
       </div>
     </div>
   );

@@ -117,6 +117,84 @@
   }
 }
 
+/* Sipariş Yönetimi */
+.statusSelect {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #ced4da;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  font-family: inherit;
+  background: white;
+  cursor: pointer;
+
+  &:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.25);
+  }
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+}
+
+.detailBtn {
+  background-color: #f1f3f5;
+  color: #495057;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.2s;
+
+  &:hover {
+    background-color: #e2e6ea;
+    color: #212529;
+  }
+}
+
+.orderDetail {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2rem;
+  background: #f8f9fa;
+  border-radius: 8px;
+  padding: 1.25rem;
+
+  @media (max-width: 700px) {
+    grid-template-columns: 1fr;
+  }
+}
+
+.detailTitle {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #868e96;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 0.5rem;
+}
+
+.detailItem {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.35rem 0;
+  font-size: 0.9rem;
+  color: #495057;
+}
+
+.detailText {
+  font-size: 0.9rem;
+  color: #495057;
+  white-space: pre-wrap;
+  line-height: 1.5;
+}
+
 /* Form Styles */
 .formContainer {
   background: white;

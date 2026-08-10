@@ -25,6 +25,9 @@ interface CartContextProps {
   addToCart: (productId: number, quantity?: number) => void;
   updateQuantity: (itemId: number, quantity: number) => void;
   removeFromCart: (itemId: number) => void;
+  // Sepeti sunucudan yeniden okur. Sepeti backend'in boşalttığı durumlarda
+  // (ör. sipariş verme) arayüzü güncel tutmak için gerekir.
+  refreshCart: () => Promise<void>;
   totalItems: number;
   totalPrice: number;
 }
@@ -34,6 +37,7 @@ const CartContext = createContext<CartContextProps>({
   addToCart: () => { },
   updateQuantity: () => { },
   removeFromCart: () => { },
+  refreshCart: async () => { },
   totalItems: 0,
   totalPrice: 0,
 });
@@ -116,7 +120,7 @@ export const CartProvider = ({ children }: { children: React.ReactNode }) => {
   const totalPrice = cart?.items.reduce((sum, item) => sum + item.quantity * item.product.price, 0) || 0;
 
   return (
-    <CartContext.Provider value={{ cart, addToCart, updateQuantity, removeFromCart, totalItems, totalPrice }}>
+    <CartContext.Provider value={{ cart, addToCart, updateQuantity, removeFromCart, refreshCart: fetchCart, totalItems, totalPrice }}>
       {children}
     </CartContext.Provider>
   );

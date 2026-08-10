@@ -1,0 +1,240 @@
+.wrapper {
+  max-width: 800px;
+  margin: 40px auto;
+  padding: 0 20px;
+}
+
+.title {
+  font-size: 26px;
+  font-weight: 700;
+  margin-bottom: 24px;
+}
+
+.info {
+  max-width: 600px;
+  margin: 60px auto;
+  padding: 32px;
+  text-align: center;
+  color: #555;
+
+  a {
+    color: #4f46e5;
+    font-weight: 600;
+    text-decoration: none;
+
+    &:hover {
+      text-decoration: underline;
+    }
+  }
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.card {
+  border: 1px solid #e5e5e5;
+  border-radius: 12px;
+  background: #fff;
+  padding: 20px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+}
+
+.cardHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.orderNo {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.date {
+  font-size: 13px;
+  color: #888;
+}
+
+// Durum rozeti: renk backend'den gelen status değerine göre seçilir.
+.badge {
+  font-size: 12px;
+  font-weight: 700;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: #eef2ff;
+  color: #4338ca;
+  white-space: nowrap;
+
+  &[data-status="SHIPPED"] {
+    background: #fef3c7;
+    color: #92400e;
+  }
+
+  &[data-status="DELIVERED"] {
+    background: #dcfce7;
+    color: #15803d;
+  }
+
+  &[data-status="CANCELLED"] {
+    background: #fee2e2;
+    color: #b91c1c;
+  }
+}
+
+.cardFooter {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid #f0f0f0;
+}
+
+.summary {
+  font-size: 14px;
+  color: #666;
+}
+
+.total {
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.detailLink {
+  font-size: 14px;
+  font-weight: 600;
+  color: #4f46e5;
+  text-decoration: none;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+// ---- Detay sayfası ----
+
+.backLink {
+  display: inline-block;
+  font-size: 14px;
+  color: #4f46e5;
+  text-decoration: none;
+  margin-bottom: 16px;
+
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+.section {
+  border: 1px solid #e5e5e5;
+  border-radius: 12px;
+  background: #fff;
+  padding: 24px;
+  margin-bottom: 20px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+}
+
+.sectionTitle {
+  font-size: 17px;
+  font-weight: 700;
+  margin-bottom: 16px;
+}
+
+.itemRow {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 0;
+  border-bottom: 1px solid #f0f0f0;
+
+  &:last-child {
+    border-bottom: none;
+  }
+}
+
+.thumb {
+  width: 56px;
+  height: 56px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid #eee;
+  flex-shrink: 0;
+}
+
+.thumbPlaceholder {
+  width: 56px;
+  height: 56px;
+  border-radius: 8px;
+  background: #f3f3f3;
+  flex-shrink: 0;
+}
+
+.itemInfo {
+  flex: 1;
+  min-width: 0;
+}
+
+.itemName {
+  font-size: 15px;
+  font-weight: 600;
+  color: #222;
+  text-decoration: none;
+
+  &:hover {
+    color: #4f46e5;
+  }
+}
+
+.itemMeta {
+  font-size: 13px;
+  color: #888;
+  margin-top: 2px;
+}
+
+.itemSubtotal {
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.grandTotal {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 2px solid #eee;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.infoGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+
+  @media (max-width: 560px) {
+    grid-template-columns: 1fr;
+  }
+}
+
+.infoLabel {
+  font-size: 12px;
+  font-weight: 600;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-bottom: 4px;
+}
+
+.infoValue {
+  font-size: 15px;
+  color: #222;
+  white-space: pre-wrap;
+}

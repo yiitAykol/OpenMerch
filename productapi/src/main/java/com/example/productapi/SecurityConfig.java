@@ -46,9 +46,13 @@ public class SecurityConfig {
             .requestMatchers("/api/auth/me", "/api/auth/change-password", "/api/auth/delete-account").authenticated()
             .requestMatchers("/api/auth/**").permitAll()
 
+            // --- Sipariş yönetimi sadece ADMIN ---
+            .requestMatchers("/api/admin/orders/**").hasRole("ADMIN")
+
             // --- Kullanıcıya özel veriler ---
             .requestMatchers("/api/cart/**").authenticated()
             .requestMatchers("/api/favorites/**").authenticated()
+            .requestMatchers("/api/orders/**").authenticated()
 
             .anyRequest().authenticated()
             )

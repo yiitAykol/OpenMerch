@@ -55,11 +55,24 @@ Bu doküman, Spring Boot ve Next.js kullanılarak geliştirilen "StackBootProjec
      - İstenilen ürünü sepetten tamamen kaldırabilme.
      - Birim fiyat * miktar çarpımı ve en altta **Genel Toplam** tutarının gösterilmesi.
 
-4. **Yönetim Paneli (Admin Panel) - *[YENİ]* **
+4. **Sipariş / Ödeme Akışı (Checkout & Orders) - *[YENİ]* **
+   - **Siparişi Tamamla (`/checkout`):** Sepet sayfasındaki butonla açılır. Solda teslimat bilgileri (ad soyad, adres, şehir, telefon, sipariş notu) ve isteğe bağlı fatura bilgileri, sağda sipariş özeti bulunur. "Fatura istiyorum" işaretlenirse fatura başlığı ve vergi/TC numarası zorunlu olur — aynı doğrulama backend'de de vardır.
+   - **Sipariş Geçmişi (`/orders`):** Kullanıcının siparişleri en yenisi üstte listelenir; sipariş numarası, tarih, durum rozeti, ürün adedi ve tutar gösterilir.
+   - **Sipariş Detayı (`/orders/{id}`):** Kalemler (görsel, ad, birim fiyat, adet, ara toplam), teslimat ve fatura bilgileri, genel toplam. Başkasının sipariş id'si denenirse backend 403 döner ve arayüz "görüntüleme yetkiniz yok" mesajı gösterir.
+   - **Fiyat Snapshot'ı (kritik tasarım kararı):** `OrderItem`, ürüne **foreign key ile bağlanmaz**. Ürünün o anki adı, görseli ve fiyatı sipariş kalemine **kopyalanır**; ürünle bağ yalnızca FK'sız bir `productId` alanıdır. Bunun iki sebebi vardır:
+     1. Ürünün fiyatı yarın değişirse geçmiş siparişin tutarı değişmemelidir.
+     2. Admin bir ürünü sildiğinde sipariş geçmişi ne bozulmalı ne de silinmelidir. (FK olsaydı ürün silme foreign key hatası verirdi.)
+   - **Atomiklik:** Sipariş oluşturma ile sepetin boşaltılması `@Transactional` ile tek işlemdir; araya giren bir hata "sepet boşaldı ama sipariş yok" gibi yarım bir durum bırakamaz.
+   - **Sepetin boşaltılması:** `cart.getItems().clear()` yeterlidir — `Cart.items` üzerindeki `orphanRemoval = true` sahipsiz kalan kalemleri siler. Frontend'de `CartContext.refreshCart()` çağrılır, aksi halde Header'daki sepet sayacı boşalmış sepeti eski adediyle göstermeye devam ederdi.
+   - **Sipariş durumları:** `NEW` (Sipariş Alındı), `PREPARING` (Hazırlanıyor), `SHIPPED` (Kargoya Verildi), `DELIVERED` (Teslim Edildi), `CANCELLED` (İptal Edildi). Durum metinleri ve biçimlendirme yardımcıları `app/lib/orders.ts` içinde toplanmıştır.
+   - **Kapsam dışı:** Ödeme entegrasyonu ve stok düşürme yoktur (`Product`'ta stok alanı bulunmuyor). Checkout, sepeti siparişe çevirmekle sınırlıdır.
+
+5. **Yönetim Paneli (Admin Panel) - *[GÜNCELLENDİ]* **
    - **Erişim:** Yalnızca `role = ADMIN` olan kullanıcılar. `/admin` altındaki tüm sayfalar `app/admin/layout.tsx` ile korunur: giriş yoksa `/login`'e, rol yetersizse ana sayfaya yönlendirilir.
    - **Ürün Yönetimi (`/admin`):** Ürün listesi tablosu; ekleme (`/admin/add`), düzenleme (`/admin/edit/{id}`) ve silme. Ürün silinirken o ürüne ait sepet kalemleri ve favoriler de temizlenir (foreign key hatası olmaması için).
    - **Kategori Yönetimi (`/admin/categories`):** Kategori ekleme ve silme. Aynı isimde ikinci kategori eklenemez.
    - **Banner Yönetimi (`/admin/banners`):** Ana sayfa slider'ına banner ekleme/silme, URL girilirken canlı önizleme.
+   - **Sipariş Yönetimi (`/admin/orders`):** Tüm siparişler en yenisi üstte listelenir; müşteri, tutar ve durum görünür. Durum açılır kutudan güncellenir, "Göster" ile satırın altında kalemler ve teslimat/fatura bilgileri açılır. Geçerli durumlar backend'de sabit bir kümede tutulur (`AdminOrderController.ALLOWED_STATUSES`), böylece arayüzden gelen rastgele bir metin veritabanına yazılamaz.
    - **Önemli:** Frontend'deki rol kontrolü yalnızca kullanıcı deneyimi içindir. Asıl güvenlik `SecurityConfig` içindeki sunucu tarafı kurallarıyla sağlanır — token'ı veya arayüzü kurcalayarak yazma işlemi yapılamaz.
 
 ---
@@ -80,7 +93,8 @@ Filtre zincirindeki kurallar (`SecurityConfig`, **yukarıdan aşağı ilk eşle�
 | 2 | `POST` / `PUT` / `DELETE` aynı yollar | `ADMIN` |
 | 3 | `/api/auth/me`, `/api/auth/change-password`, `/api/auth/delete-account` | Giriş yapmış |
 | 4 | `/api/auth/**` (register, verify, login, resend) | Herkes |
-| 5 | `/api/cart/**`, `/api/favorites/**` | Giriş yapmış |
+| 5 | `/api/admin/orders/**` | `ADMIN` |
+| 6 | `/api/cart/**`, `/api/favorites/**`, `/api/orders/**` | Giriş yapmış |
 
 > `hasRole("ADMIN")` arka planda `ROLE_ADMIN` authority'sini arar — bu yüzden `JwtAuthFilter` rolü yazarken `"ROLE_" + role` önekini elle ekler.
 
@@ -100,7 +114,9 @@ if (authentication == null || !(authentication.getPrincipal() instanceof User us
 // 4) İşlem
 ```
 
-Uygulandığı yerler: `CartController.updateItemQuantity`, `CartController.removeItem`, `FavoriteController.deleteFavorite`.
+Uygulandığı yerler: `CartController.updateItemQuantity`, `CartController.removeItem`, `FavoriteController.deleteFavorite`, `OrderController.getOrder`.
+
+> **Not:** Sipariş kaydı ad, adres ve telefon içerdiği için `OrderController.getOrder`'daki kontrol diğerlerinden daha kritiktir; atlanırsa id deneyerek kişisel veri okunabilirdi. Bu kontrol **admin için de** sıkıdır: admin başkasının siparişini `/api/orders/{id}` üzerinden göremez, yolu `/api/admin/orders`'tır. Yetki, yetkinin tanımlı olduğu kapıdan verilir.
 
 Dikkat edilecek iki nokta:
 
@@ -120,6 +136,8 @@ Backend tarafında JPA kullanılarak veritabanı tabloları ile nesneler eşleş
 - **`Favorite` (Favori):** Hangi ürünün hangi kullanıcı tarafından favorilere eklendiğini temsil eder (`@ManyToOne User`, `@ManyToOne Product`).
 - **`Cart` (Sepet):** Kullanıcıyla birebir (`@OneToOne`) eşleşen genel sepet nesnesi.
 - **`CartItem` (Sepet Öğesi):** Sepetin içindeki kalemleri tutar. Hangi sepette (`@ManyToOne Cart`), hangi üründen (`@ManyToOne Product`), kaç adet (`quantity`) olduğunu belirler.
+- **`Order` (Sipariş):** Tamamlanmış bir siparişi tutar (`id`, `@ManyToOne User` (`@JsonIgnore`), `createdAt (Instant)`, `status`, `totalAmount (BigDecimal)`, teslimat alanları: `fullName`, `address`, `city`, `phone`, `note`, fatura alanları: `invoiceRequired`, `invoiceTitle`, `taxOffice`, `taxId`). Tablo adı `@Table(name = "orders")` ile verilir çünkü `order` SQL'de rezerve bir kelimedir (`ORDER BY`). `addItem()` ilişkinin iki ucunu birden kurar, `updateTotals()` kalemlerin ara toplamlarından genel toplamı hesaplar. `user` gizli olduğu için admin listesine `customerUsername` / `customerEmail` türetilmiş getter'larla açılır.
+- **`OrderItem` (Sipariş Kalemi):** Sipariş anındaki ürün bilgilerinin kopyasını tutar (`productId` — **FK değil, düz alan**, `productName`, `imageUrl`, `unitPrice`, `quantity`). `@ManyToOne Order` alanı `@JsonIgnore`'dur; olmasaydı JSON üretimi `order → items → order` diye sonsuz döngüye girerdi.
 
 ---
 
@@ -151,6 +169,11 @@ Erişim sütunu: 🌐 herkese açık · 🔑 giriş gerekir · 👑 `ADMIN` rol�
 | **POST** | `/api/cart/items` | 🔑 | Sepete yeni ürün ekler (veya miktarını artırır). |
 | **PUT** | `/api/cart/items/{itemId}?quantity=X` | 🔑 | Sepetteki bir ürünün miktarını günceller. |
 | **DELETE** | `/api/cart/items/{itemId}` | 🔑 | İlgili ürünü sepetten tamamen çıkartır. |
+| **POST** | `/api/orders` | 🔑 | Sepeti siparişe çevirir ve sepeti boşaltır. Gövde: `{fullName, address, city, phone, note?, invoiceRequired?, invoiceTitle?, taxOffice?, taxId?}`. Boş sepette 400 döner. |
+| **GET** | `/api/orders` | 🔑 | Kullanıcının siparişlerini listeler (en yenisi üstte). |
+| **GET** | `/api/orders/{id}` | 🔑 | Tek siparişi getirir. Sahiplik kontrolü vardır: başkasının siparişinde 403. |
+| **GET** | `/api/admin/orders` | 👑 | Tüm siparişleri listeler (en yenisi üstte). |
+| **PUT** | `/api/admin/orders/{id}/status` | 👑 | Sipariş durumunu günceller. Gövde: `{status}`. Tanımlı olmayan durum 400 döner. |
 
 ---
 
@@ -221,14 +244,19 @@ Dürüst kalsın diye not düşülmüştür; henüz **kapatılmamıştır**:
 **Hata yönetimi / veri bütünlüğü**
 
 2. **Sepet yarış durumu:** `Cart.user` üzerinde unique kısıtı yok; eşzamanlı iki istek aynı kullanıcıya iki sepet oluşturabilir.
+3. **Sepette toplam miktar sınırı delinebiliyor:** `CartController.addItemToCart` tek istekte `quantity > 100`'ü reddediyor, ancak mevcut kaleme ekleme yapılırken **toplam** kontrol edilmiyor. 50'yi üç kez gönderen 150 adete ulaşır ve bu miktar siparişe de geçer.
+4. **Şifre değişince eski token'lar geçerli kalıyor:** JWT'de iptal (revocation) mekanizması yok; şifresini değiştiren kullanıcının önceki token'ı süresi dolana kadar çalışmaya devam eder.
+5. **Sipariş iptali kullanıcı tarafında yok:** `CANCELLED` durumunu yalnızca admin verebiliyor.
 
 **Kod kalitesi**
 
-3. **Kullanılmayan artıklar:** `productapi` içinde boş `string.java` sınıfı, `Header.tsx`'te kullanılmayan `import { title } from "process"`, kök `layout.tsx`'te hâlâ varsayılan "Create Next App" metadata'sı.
-4. **Test yok:** Yalnızca varsayılan `contextLoads` testi mevcut.
+6. **Kullanılmayan artıklar:** `productapi` içinde boş `string.java` sınıfı, `CartController`'da enjekte edilip hiç kullanılmayan `userRepository`, `Header.tsx`'te kullanılmayan `import { title } from "process"`, kök `layout.tsx`'te hâlâ varsayılan "Create Next App" metadata'sı.
+7. **Test yok:** Yalnızca varsayılan `contextLoads` testi mevcut. Sipariş akışı (sahiplik kontrolü, snapshot, sepetin boşalması) test edilmeye en uygun yer.
 
 > **Kapatılanlar:**
 > - Ürün / kategori / banner yazma uçları `ADMIN` rolüne kilitlendi, `/admin` sayfaları rol kontrolüyle sarmalandı.
 > - Sepet ve favorilerdeki **IDOR** açıkları kapatıldı (sahiplik kontrolü — bkz. *Yetkilendirme Modeli*).
 > - Frontend'in tamamı `useApi` kullanıyor; gömülü API adresi kalmadı, token yalnızca `AuthContext` tarafından okunuyor/yazılıyor.
 > - `FavoriteController` hataları `RuntimeException` (500) yerine anlamlı HTTP kodlarıyla dönüyor.
+> - Sipariş / checkout akışı eklendi; `OrderController.getOrder` sahiplik kontrolüyle korunuyor.
+> - Hesap silme artık siparişleri de temizliyor. (Önceden `Order.user` foreign key'i yüzünden siparişi olan kullanıcı hesabını silemezdi.)

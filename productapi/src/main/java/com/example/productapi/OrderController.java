@@ -1,0 +1,147 @@
+package com.example.productapi;
+
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.bind.annotation.*;
+
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+
+@RestController
+@RequestMapping("/api/orders")
+public class OrderController {
+
+    private final OrderRepository orderRepository;
+    private final CartRepository cartRepository;
+
+    public OrderController(OrderRepository orderRepository,
+                           CartRepository cartRepository) {
+        this.orderRepository = orderRepository;
+        this.cartRepository = cartRepository;
+    }
+
+    // Checkout formundan gelen teslimat/fatura bilgileri.
+    public static class CheckoutRequest {
+        public String fullName;
+        public String address;
+        public String city;
+        public String phone;
+        public String note;
+        public Boolean invoiceRequired;
+        public String invoiceTitle;
+        public String taxOffice;
+        public String taxId;
+    }
+
+    // SİPARİŞ OLUŞTURMA: sepeti siparişe çevirir ve sepeti boşaltır.
+    //
+    // @Transactional şart: sipariş kaydı ile sepetin boşaltılması tek bir işlem.
+    // Ortada bir hata olursa ikisi birden geri alınır; aksi halde "sipariş oluştu
+    // ama sepet duruyor" ya da "sepet boşaldı ama sipariş kaydedilmedi" gibi
+    // yarım durumlar kalırdı.
+    @PostMapping
+    @Transactional
+    public ResponseEntity<?> checkout(Authentication authentication, @RequestBody CheckoutRequest req) {
+        // 1) Kimlik
+        if (authentication == null || !(authentication.getPrincipal() instanceof User user)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        // 2) Teslimat bilgileri zorunlu
+        if (isBlank(req.fullName) || isBlank(req.address) || isBlank(req.city) || isBlank(req.phone)) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "message", "Ad soyad, adres, şehir ve telefon zorunludur."));
+        }
+
+        boolean invoiceRequired = Boolean.TRUE.equals(req.invoiceRequired);
+        if (invoiceRequired && (isBlank(req.invoiceTitle) || isBlank(req.taxId))) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "message", "Fatura için fatura başlığı ve vergi/TC numarası zorunludur."));
+        }
+
+        // 3) Sepet dolu mu?
+        Cart cart = cartRepository.findByUserId(user.getId());
+        if (cart == null || cart.getItems().isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of("message", "Sepetiniz boş."));
+        }
+
+        // Sepeti birazdan boşaltacağımız için kalemlerin kopyasıyla çalışıyoruz.
+        List<CartItem> cartItems = new ArrayList<>(cart.getItems());
+
+        // 4) Siparişi kur
+        Order order = new Order(user, Instant.now(), "NEW");
+        order.setFullName(req.fullName.trim());
+        order.setAddress(req.address.trim());
+        order.setCity(req.city.trim());
+        order.setPhone(req.phone.trim());
+        order.setNote(req.note == null ? null : req.note.trim());
+        order.setInvoiceRequired(invoiceRequired);
+        if (invoiceRequired) {
+            order.setInvoiceTitle(req.invoiceTitle.trim());
+            order.setTaxId(req.taxId.trim());
+            order.setTaxOffice(req.taxOffice == null ? null : req.taxOffice.trim());
+        }
+
+        for (CartItem cartItem : cartItems) {
+            Product product = cartItem.getProduct();
+            // Ürün silinmişse sepette artık kalemi olmamalı; yine de yarım sipariş
+            // oluşturmaktansa isteği reddediyoruz.
+            if (product == null) {
+                return ResponseEntity.badRequest().body(Map.of(
+                        "message", "Sepetinizde artık satışta olmayan bir ürün var. Lütfen sepetinizi yenileyin."));
+            }
+            // Fiyat/isim/görsel burada kopyalanır (snapshot) — ürün sonradan
+            // değişse veya silinse bile sipariş geçmişi olduğu gibi kalır.
+            order.addItem(new OrderItem(product, cartItem.getQuantity()));
+        }
+
+        order.updateTotals();
+        orderRepository.save(order); // cascade = ALL sayesinde kalemler de kaydedilir
+
+        // 5) Sepeti boşalt (orphanRemoval = true kalemleri de siler)
+        cart.getItems().clear();
+        cartRepository.save(cart);
+
+        return ResponseEntity.status(HttpStatus.CREATED).body(order);
+    }
+
+    // SİPARİŞ GEÇMİŞİ: yalnızca isteği yapanın siparişleri, en yenisi üstte.
+    @GetMapping
+    public ResponseEntity<List<Order>> getMyOrders(Authentication authentication) {
+        if (authentication == null || !(authentication.getPrincipal() instanceof User user)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        return ResponseEntity.ok(orderRepository.findByUserIdOrderByCreatedAtDesc(user.getId()));
+    }
+
+    // TEK SİPARİŞ: id ile geldiği için sahiplik kontrolü şart (IDOR).
+    @GetMapping("/{id}")
+    public ResponseEntity<Order> getOrder(Authentication authentication, @PathVariable Long id) {
+        // 1) Kimlik
+        if (authentication == null || !(authentication.getPrincipal() instanceof User user)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        // 2) Nesneyi bul
+        Order order = orderRepository.findById(id).orElse(null);
+        if (order == null) {
+            return ResponseEntity.notFound().build();
+        }
+
+        // 3) Sahiplik: başkasının siparişi görüntülenemez
+        if (order.getUser() == null || !order.getUser().getId().equals(user.getId())) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+
+        // 4) İşlem
+        return ResponseEntity.ok(order);
+    }
+
+    private boolean isBlank(String value) {
+        return value == null || value.isBlank();
+    }
+}

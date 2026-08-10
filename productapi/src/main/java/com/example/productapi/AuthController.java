@@ -25,19 +25,22 @@ public class AuthController {
     private final JwtService jwtService;
     private final CartRepository cartRepository;
     private final FavoriteRepository favoriteRepository;
+    private final OrderRepository orderRepository;
 
     public AuthController(UserRepository userRepository,
                           PasswordEncoder passwordEncoder,
                           EmailService emailService,
                           JwtService jwtService,
                           CartRepository cartRepository,
-                          FavoriteRepository favoriteRepository) {
+                          FavoriteRepository favoriteRepository,
+                          OrderRepository orderRepository) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.emailService = emailService;
         this.jwtService = jwtService;
         this.cartRepository = cartRepository;
         this.favoriteRepository = favoriteRepository;
+        this.orderRepository = orderRepository;
     }
 
     // ---- İstek gövdeleri (DTO) ----
@@ -216,9 +219,10 @@ public class AuthController {
             return ResponseEntity.badRequest().body(Map.of("message", "Kullanıcı bulunamadı."));
         }
 
-        // İlişkili verileri (sepet ve favoriler) temizle ki Foreign Key hatası almayalım.
+        // İlişkili verileri (sepet, favoriler ve siparişler) temizle ki Foreign Key hatası almayalım.
         cartRepository.deleteByUserId(dbUser.getId());
         favoriteRepository.deleteByUserId(dbUser.getId());
+        orderRepository.deleteByUserId(dbUser.getId());
 
         // Son olarak kullanıcıyı sil.
         userRepository.delete(dbUser);

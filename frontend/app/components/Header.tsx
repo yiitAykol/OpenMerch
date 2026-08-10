@@ -140,6 +140,10 @@ export default function Header() {
                         style={{ padding: "10px 14px", fontSize: "14px", color: "#222", textDecoration: "none" }}>
                         Hesabım ({user.username})
                       </Link>
+                      <Link href="/orders" onClick={() => setMenuOpen(false)}
+                        style={{ padding: "10px 14px", fontSize: "14px", color: "#222", textDecoration: "none", borderTop: "1px solid #f0f0f0" }}>
+                        Siparişlerim
+                      </Link>
                       <button
                         onClick={() => { logout(); setMenuOpen(false); }}
                         style={{
