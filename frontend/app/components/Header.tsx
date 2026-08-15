@@ -5,8 +5,6 @@ import styles from "../layout.module.scss";
 import { useCart } from "../context/CartContext";
 import { useAuth } from "../context/AuthContext";
 import { useEffect, useState, useRef } from "react";
-import { title } from "process";
-
 
 export default function Header() {
   const { totalItems } = useCart();
@@ -15,6 +13,7 @@ export default function Header() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [isCartFlashing, setIsCartFlashing] = useState(false);
   const [showLoginToast, setShowLoginToast] = useState(false);
+  const [cartError, setCartError] = useState<string | null>(null);
 
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -35,14 +34,22 @@ export default function Header() {
       setTimeout(() => setShowLoginToast(false), 3000);
     };
 
+    // Sepet isteği reddedilince sebebini göster (ör. adet sınırı aşıldı).
+    const handleCartError = (e: Event) => {
+      setCartError((e as CustomEvent<string>).detail);
+      setTimeout(() => setCartError(null), 4000);
+    };
+
     window.addEventListener("favoriteAdded", handleFavoriteAdded);
     window.addEventListener("cartAdded", handleCartAdded);
     window.addEventListener("loginRequired", handleLoginRequired);
+    window.addEventListener("cartError", handleCartError);
 
     return () => {
       window.removeEventListener("favoriteAdded", handleFavoriteAdded);
       window.removeEventListener("cartAdded", handleCartAdded);
       window.removeEventListener("loginRequired", handleLoginRequired);
+      window.removeEventListener("cartError", handleCartError);
     };
   }, []);
 
@@ -204,6 +211,29 @@ export default function Header() {
                 <Link href="/login" onClick={() => setShowLoginToast(false)} style={{ fontSize: "13px", background: "#070606ff", color: "rgba(247, 244, 244, 1)", textDecoration: "none", fontWeight: "bold" }}>Giriş Yap</Link>
                 <Link href="/register" onClick={() => setShowLoginToast(false)} style={{ fontSize: "13px", color: "#fff", textDecoration: "underline" }}>Üye Ol</Link>
               </div>
+            </div>
+          )}
+          {cartError && (
+            <div style={{
+              position: "fixed",
+              top: "80px",
+              right: "20px",
+              background: "#333",
+              color: "#fff",
+              padding: "15px 20px",
+              borderRadius: "8px",
+              boxShadow: "0 4px 12px rgba(0,0,0,0.2)",
+              zIndex: 9999,
+              maxWidth: "320px",
+              display: "flex",
+              flexDirection: "column",
+              gap: "8px",
+            }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "10px" }}>
+                <strong style={{ fontSize: "14px" }}>Sepet güncellenemedi</strong>
+                <button onClick={() => setCartError(null)} style={{ background: "none", border: "none", color: "#e9dedeff", cursor: "pointer", fontSize: "16px" }}>×</button>
+              </div>
+              <div style={{ fontSize: "13px", color: "#ddd" }}>{cartError}</div>
             </div>
           )}
         </div>

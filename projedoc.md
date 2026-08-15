@@ -6,8 +6,9 @@ Bu doküman, Spring Boot ve Next.js kullanılarak geliştirilen "StackBootProjec
 
 ### Backend (API Katmanı)
 - **Dil / Çerçeve:** Java, Spring Boot
+- **Veritabanı:** PostgreSQL 16 (Docker ile ayağa kalkar — bkz. *Geliştirici Ortamı*). Şema Hibernate tarafından otomatik üretilir (`ddl-auto=update`).
 - **Veri Erişim:** Spring Data JPA (Hibernate)
-- **Mimari:** RESTful API mimarisi (Controller, Service/Repository, Entity katmanları)
+- **Mimari:** RESTful API — `Controller` → `Repository` → `Entity`. **Ayrı bir service katmanı yoktur:** iş mantığı controller'ların içindedir. `EmailService` ve `JwtService` bu kuralın istisnasıdır; ikisi de birden fazla yerden çağrılan teknik yardımcılardır, iş kuralı taşımazlar.
 - **Veri Tipleri:** Finansal hesaplamalar için `BigDecimal` kullanımı.
 - **Güvenlik / Kimlik Doğrulama:** Spring Security, JWT (jjwt), şifreler için BCrypt hash.
 - **Yetkilendirme:** Rol tabanlı (`USER` / `ADMIN`). Rol kullanıcı kaydında tutulur, her istekte veritabanından okunur.
@@ -16,8 +17,8 @@ Bu doküman, Spring Boot ve Next.js kullanılarak geliştirilen "StackBootProjec
 ### Frontend (Kullanıcı Arayüzü)
 - **Dil / Çerçeve:** TypeScript, React, Next.js 16 (App Router)
 - **State Yönetimi:** React Context API (`CartContext`, `AuthContext`)
-- **Oturum:** JWT token'ı `localStorage`'da tutulur, korumalı isteklerde `Authorization: Bearer` başlığıyla gönderilir.
-- **API Erişimi:** `app/lib/useApi.ts` hook'u; base URL'i ve `Authorization` başlığını her isteğe otomatik ekler. Kullanımı: `const apiFetch = useApi();` → `apiFetch("/api/products", { method: "DELETE" })`. **İstisna:** `AuthContext` bu hook'u kullanamaz — token'ı üreten yer olduğu için dairesel bağımlılık oluşur; oradaki çağrılar bilinçli olarak ham `fetch` ile yapılır.
+- **Oturum:** JWT token'ı `localStorage`'da tutulur, korumalı isteklerde `Authorization: Bearer` başlığıyla gönderilir. Token ömrü **24 saattir** (`app.jwt.expiration-ms`).
+- **API Erişimi:** `app/lib/useApi.ts` hook'u; base URL'i ve `Authorization` başlığını her isteğe otomatik ekler. Base URL `NEXT_PUBLIC_API_URL` ortam değişkeninden okunur — bu değişken tanımlı değilse istekler `undefined/api/...` adresine gider ve uygulama sessizce çalışmaz (bkz. *Geliştirici Ortamı*). Kullanımı: `const apiFetch = useApi();` → `apiFetch("/api/products", { method: "DELETE" })`. **İstisna:** `AuthContext` bu hook'u kullanamaz — token'ı üreten yer olduğu için dairesel bağımlılık oluşur; oradaki çağrılar bilinçli olarak ham `fetch` ile yapılır.
 - **Rota Koruma:** `app/admin/layout.tsx` — `/admin` altındaki tüm sayfaları rol kontrolüyle sarmalar.
 - **Stillendirme:** SCSS Modules (`.module.scss`) ve Global CSS.
 
@@ -134,10 +135,39 @@ Backend tarafında JPA kullanılarak veritabanı tabloları ile nesneler eşleş
 - **`Category` (Kategori):** Ürün kategorilerinin listesi (`id`, `name` — unique). Ürünle ilişki metin üzerinden kurulur (`Product.category`), foreign key yoktur.
 - **`Banner` (Afiş):** Ana sayfa slider'ındaki görseller (`id`, `imageUrl`, `title`).
 - **`Favorite` (Favori):** Hangi ürünün hangi kullanıcı tarafından favorilere eklendiğini temsil eder (`@ManyToOne User`, `@ManyToOne Product`).
-- **`Cart` (Sepet):** Kullanıcıyla birebir (`@OneToOne`) eşleşen genel sepet nesnesi.
+- **`Cart` (Sepet):** Kullanıcıyla birebir (`@OneToOne`) eşleşen genel sepet nesnesi. `@OneToOne` sayesinde Hibernate `user_id` kolonuna bir **`UNIQUE` kısıtı** üretir — bir kullanıcının ikinci bir sepeti veritabanı seviyesinde imkânsızdır. `CartController.getOrCreateCart` bu kısıta güvenerek çalışır (bkz. *Sepet Yarış Durumu*).
 - **`CartItem` (Sepet Öğesi):** Sepetin içindeki kalemleri tutar. Hangi sepette (`@ManyToOne Cart`), hangi üründen (`@ManyToOne Product`), kaç adet (`quantity`) olduğunu belirler.
 - **`Order` (Sipariş):** Tamamlanmış bir siparişi tutar (`id`, `@ManyToOne User` (`@JsonIgnore`), `createdAt (Instant)`, `status`, `totalAmount (BigDecimal)`, teslimat alanları: `fullName`, `address`, `city`, `phone`, `note`, fatura alanları: `invoiceRequired`, `invoiceTitle`, `taxOffice`, `taxId`). Tablo adı `@Table(name = "orders")` ile verilir çünkü `order` SQL'de rezerve bir kelimedir (`ORDER BY`). `addItem()` ilişkinin iki ucunu birden kurar, `updateTotals()` kalemlerin ara toplamlarından genel toplamı hesaplar. `user` gizli olduğu için admin listesine `customerUsername` / `customerEmail` türetilmiş getter'larla açılır.
 - **`OrderItem` (Sipariş Kalemi):** Sipariş anındaki ürün bilgilerinin kopyasını tutar (`productId` — **FK değil, düz alan**, `productName`, `imageUrl`, `unitPrice`, `quantity`). `@ManyToOne Order` alanı `@JsonIgnore`'dur; olmasaydı JSON üretimi `order → items → order` diye sonsuz döngüye girerdi.
+
+### Sepet Yarış Durumu (Race Condition)
+
+Sepet "kullanıcı ilk kez ihtiyaç duyduğunda oluşturulur" mantığıyla çalışır. Bu, klasik bir **"önce bak, yoksa oluştur"** kalıbıdır ve kontrol ile davranış arasında bir boşluk bırakır:
+
+```java
+Cart cart = cartRepository.findByUserId(user.getId());  // kontrol
+if (cart == null) {
+    cartRepository.save(new Cart(user));                // davranış
+}
+```
+
+Sepeti henüz olmayan bir kullanıcının iki isteği aynı anda gelirse ikisi de kontrol anında `null` görür (çünkü hiçbiri henüz kaydetmemiştir) ve ikisi de oluşturmaya kalkar. Senaryo hayali değildir: giriş anında `CartContext` `GET /api/cart` atarken kullanıcının "Sepete Ekle"ye basması, ya da iki sekme açık olması yeterlidir.
+
+**Bu boşluk kod tarafında kapatılamaz.** Kontrolü ne kadar sıkılaştırırsan sıkılaştır, iki isteğin arasına girme ihtimali durur; tek gerçek hakem veritabanıdır. Burada hakem `cart.user_id` üzerindeki `UNIQUE` kısıtıdır (Hibernate `@OneToOne`'dan üretir) — ikinci kaydı reddeder.
+
+Dolayısıyla doğru çözüm **çakışmayı engellemeye çalışmak değil, beklemek ve kurtarmaktır.** `CartController.getOrCreateCart` bunu yapar:
+
+```java
+try {
+    return cartRepository.save(new Cart(user));
+} catch (DataIntegrityViolationException e) {
+    // Yarışı kaybettik: bu arada başka bir istek sepeti oluşturdu.
+    // Hata değil, beklenen sonuç — onun sepetiyle devam ediyoruz.
+    return cartRepository.findByUserId(user.getId());
+}
+```
+
+> Bu `catch` bloğu yakalamasaydı veri yine bozulmazdı (kısıt korur), ama kullanıcı tamamen normal bir durumda **500 Internal Server Error** görürdü. Yani buradaki kazanç veri bütünlüğü değil, dürüst hata davranışıdır.
 
 ---
 
@@ -164,10 +194,12 @@ Erişim sütunu: 🌐 herkese açık · 🔑 giriş gerekir · 👑 `ADMIN` rol�
 | **GET** | `/api/banners` | 🌐 | Banner'ları listeler. |
 | **POST** | `/api/banners` | 👑 | Banner ekler. Gövde: `{imageUrl, title}`. |
 | **DELETE** | `/api/banners/{id}` | 👑 | Banner'ı siler. |
-| **GET/POST/DELETE** | `/api/favorites` | 🔑 | Kullanıcının favorilerini yönetir (`userId` parametresi iptal edildi, JWT'den okunur). |
+| **GET** | `/api/favorites` | 🔑 | Kullanıcının favorilerini listeler (`userId` parametresi iptal edildi, JWT'den okunur). |
+| **POST** | `/api/favorites` | 🔑 | Favoriye ekler. Gövde: `{productId}`. Ürün zaten favorideyse 409 döner. Yanıt, oluşan **favori kaydını** (id'siyle birlikte) içerir. |
+| **DELETE** | `/api/favorites/{id}` | 🔑 | Favoriden çıkarır. Buradaki `id` ürünün değil, **favori kaydının** id'sidir. Sahiplik kontrolü vardır: başkasının favorisinde 403. |
 | **GET** | `/api/cart` | 🔑 | Giriş yapan kullanıcının sepetini ve içindeki öğeleri getirir. |
-| **POST** | `/api/cart/items` | 🔑 | Sepete yeni ürün ekler (veya miktarını artırır). |
-| **PUT** | `/api/cart/items/{itemId}?quantity=X` | 🔑 | Sepetteki bir ürünün miktarını günceller. |
+| **POST** | `/api/cart/items` | 🔑 | Sepete yeni ürün ekler (veya miktarını artırır). Gövde: `{productId, quantity}`. Ürün sepette zaten varsa **mevcut + gelen** adet sınırı (100) aşarsa 400 + mesaj döner. |
+| **PUT** | `/api/cart/items/{itemId}?quantity=X` | 🔑 | Sepetteki bir ürünün miktarını günceller. `X > 100` ise 400 + mesaj; `X <= 0` ise kalem silinir. Sahiplik kontrolü vardır. |
 | **DELETE** | `/api/cart/items/{itemId}` | 🔑 | İlgili ürünü sepetten tamamen çıkartır. |
 | **POST** | `/api/orders` | 🔑 | Sepeti siparişe çevirir ve sepeti boşaltır. Gövde: `{fullName, address, city, phone, note?, invoiceRequired?, invoiceTitle?, taxOffice?, taxId?}`. Boş sepette 400 döner. |
 | **GET** | `/api/orders` | 🔑 | Kullanıcının siparişlerini listeler (en yenisi üstte). |
@@ -179,10 +211,34 @@ Erişim sütunu: 🌐 herkese açık · 🔑 giriş gerekir · 👑 `ADMIN` rol�
 
 ## 💻 Geliştirici Ortamı (Nasıl Çalıştırılır?)
 
-**Backend'i Çalıştırmak:**
+Sırayla üç şey ayağa kalkar: **veritabanı → backend → frontend.** Veritabanı olmadan backend açılışta hata verir, `NEXT_PUBLIC_API_URL` olmadan frontend hiçbir veri çekemez.
+
+**1. Veritabanını Başlatmak (önce bu):**
+1. Proje kökünde `docker compose up -d` çalıştırın. Bu, kökteki `docker-compose.yml` ile `product-db` adında bir PostgreSQL 16 container'ı ayağa kaldırır (`productdb` veritabanı, port `5432`, kullanıcı/şifre `postgres`).
+2. Kontrol: `docker ps` çıktısında `product-db` görünmeli.
+
+> Veriler `pgdata` adlı Docker volume'unda kalıcıdır; container'ı `docker compose down` ile durdurmak veriyi silmez (silmek için `docker compose down -v`).
+>
+> Bağlantı bilgileri `application.properties` içinde sabittir; farklı bir veritabanı kullanacaksanız orayı düzenleyin. Aşağıdaki "Kendini Admin Yapma" bölümündeki `docker exec product-db ...` komutları da bu container'ı hedefler.
+
+**2. Backend'i Çalıştırmak:**
 1. `productapi` klasörüne gidin.
 2. Terminalde `mvnw spring-boot:run` (Mac/Linux için `./mvnw spring-boot:run`, Windows PowerShell için `.\mvnw spring-boot:run`) komutunu çalıştırın.
+3. API `http://localhost:8080` adresinde açılır.
+
 *Not: Uygulama ilk kalktığında `ProductapiApplication` içerisindeki seed datalar ile veritabanına örnek ürünler ve varsayılan kullanıcı (ID:1) eklenecektir.*
+
+**3. Frontend'i Çalıştırmak:**
+1. `frontend` klasörüne gidin.
+2. Bağımlılıkları yükleyin: `npm install`
+3. **`frontend/.env.local` dosyasını oluşturun** ve backend adresini yazın:
+   ```
+   NEXT_PUBLIC_API_URL=http://localhost:8080
+   ```
+4. Geliştirici sunucusunu başlatın: `npm run dev`
+5. Tarayıcınızda `http://localhost:3000` adresine giderek projeyi görüntüleyin.
+
+> **3. adım atlanamaz.** `.env.local` dosyası `.gitignore`'dadır, yani projeyi klonlayan kimseye gelmez. `useApi` base URL'i bu değişkenden okur; tanımsızsa her istek `undefined/api/...` adresine gider. Uygulama hata vermeden açılır ama hiçbir ürün, sepet veya sipariş görünmez — bu yüzden teşhisi zor bir hatadır. Değişken adının `NEXT_PUBLIC_` ile başlaması zorunludur; Next.js yalnızca bu öneke sahip değişkenleri tarayıcıya gönderir.
 
 ### 📧 E-posta Doğrulama İçin Gmail Kurulumu (Önemli)
 
@@ -198,9 +254,13 @@ Doğrulama kodunun **gerçekten e-postaya gönderilmesi** için bir Gmail hesab�
    cd productapi; .\mvnw.cmd spring-boot:run
    ```
 
-> **Not (Geliştirme modu):** `MAIL_USERNAME` / `MAIL_PASSWORD` verilmezse uygulama yine çalışır; ancak doğrulama kodu e-posta yerine **backend konsoluna** yazılır (`[Auth] ... Kod: 123456`). Test/geliştirme için pratiktir.
+> **Not (Geliştirme modu):** Yukarıdaki değişkenlerin **hiçbiri zorunlu değildir**; üçünün de `application.properties` içinde varsayılanı vardır ve uygulama onlarsız da ayağa kalkar:
+> - `MAIL_USERNAME` / `MAIL_PASSWORD` verilmezse doğrulama kodu e-posta yerine **backend konsoluna** yazılır (`[Auth] ... Kod: 123456`). Test için pratiktir.
+> - `JWT_SECRET` verilmezse koddaki `dev-only-secret-change-me-please-32bytes-min!!` kullanılır. Bu değer herkese açık depoda durduğu için **üretimde mutlaka geçersiz kılınmalıdır** — bilen biri kendine istediği kullanıcı için geçerli token üretebilir.
 >
 > **Güvenlik:** App Password ve `JWT_SECRET` gibi bilgileri asla kod içine yazmayın veya GitHub'a pushlamayın.
+>
+> **Token ömrü:** Üretilen JWT **24 saat** geçerlidir (`app.jwt.expiration-ms=86400000`). Süre dolunca kullanıcı yeniden giriş yapmalıdır.
 
 ### 🔐 Kimlik Doğrulama Akışı (Auth Flow)
 
@@ -225,12 +285,6 @@ docker exec product-db psql -U postgres -d productdb -c "SELECT id, email, role 
 
 > `role` kolonu uygulama açılışında Hibernate tarafından (`ddl-auto=update`) otomatik eklenir. Kolon yoksa backend'i bir kez yeniden başlatın.
 
-**Frontend'i Çalıştırmak:**
-1. `frontend` klasörüne gidin.
-2. Bağımlılıkları yükleyin: `npm install`
-3. Geliştirici sunucusunu başlatın: `npm run dev`
-4. Tarayıcınızda `http://localhost:3000` adresine giderek projeyi görüntüleyin.
-
 ---
 
 ## 🚧 Bilinen Açıklar (Sıradaki İşler)
@@ -243,17 +297,17 @@ Dürüst kalsın diye not düşülmüştür; henüz **kapatılmamıştır**:
 
 **Hata yönetimi / veri bütünlüğü**
 
-2. **Sepet yarış durumu:** `Cart.user` üzerinde unique kısıtı yok; eşzamanlı iki istek aynı kullanıcıya iki sepet oluşturabilir.
-3. **Sepette toplam miktar sınırı delinebiliyor:** `CartController.addItemToCart` tek istekte `quantity > 100`'ü reddediyor, ancak mevcut kaleme ekleme yapılırken **toplam** kontrol edilmiyor. 50'yi üç kez gönderen 150 adete ulaşır ve bu miktar siparişe de geçer.
-4. **Şifre değişince eski token'lar geçerli kalıyor:** JWT'de iptal (revocation) mekanizması yok; şifresini değiştiren kullanıcının önceki token'ı süresi dolana kadar çalışmaya devam eder.
-5. **Sipariş iptali kullanıcı tarafında yok:** `CANCELLED` durumunu yalnızca admin verebiliyor.
+2. **Şifre değişince eski token'lar geçerli kalıyor:** JWT'de iptal (revocation) mekanizması yok; şifresini değiştiren kullanıcının önceki token'ı süresi dolana kadar çalışmaya devam eder.
+3. **Sipariş iptali kullanıcı tarafında yok:** `CANCELLED` durumunu yalnızca admin verebiliyor.
 
 **Kod kalitesi**
 
-6. **Kullanılmayan artıklar:** `productapi` içinde boş `string.java` sınıfı, `CartController`'da enjekte edilip hiç kullanılmayan `userRepository`, `Header.tsx`'te kullanılmayan `import { title } from "process"`, kök `layout.tsx`'te hâlâ varsayılan "Create Next App" metadata'sı.
-7. **Test yok:** Yalnızca varsayılan `contextLoads` testi mevcut. Sipariş akışı (sahiplik kontrolü, snapshot, sepetin boşalması) test edilmeye en uygun yer.
+4. **Test yok:** Yalnızca varsayılan `contextLoads` testi mevcut. Sipariş akışı (sahiplik kontrolü, snapshot, sepetin boşalması) test edilmeye en uygun yer.
 
 > **Kapatılanlar:**
+> - Sepet yarış durumu ele alındı. (Not: bu madde eskiden "`Cart.user` üzerinde unique kısıtı yok, iki sepet oluşabilir" diye yazılmıştı; **yanlıştı**. Hibernate `@OneToOne`'dan kısıtı üretmiş, canlı şemada `cart.user_id` üzerinde `UNIQUE` duruyor. Yani veri bütünlüğü hiç bozulmuyordu; asıl sorun, kısıtın reddettiği ikinci kaydın yakalanmaması ve kullanıcının 500 almasıydı.) Sepet oluşturma tek bir `getOrCreateCart` metoduna toplandı, `DataIntegrityViolationException` yakalanıp yarışı kazanan isteğin sepeti okunuyor.
+> - Sepetteki adet sınırı gerçekten uygulanıyor: sınır `CartController.MAX_QUANTITY_PER_ITEM` sabitinde tek yerde tanımlı, ekleme (POST) **toplam** adede bakıyor ve güncelleme (PUT) ucuna da üst sınır kondu. Reddedilen istekler artık gövdesiz 400 yerine sebep mesajı dönüyor, arayüz de bunu toast olarak gösteriyor.
+> - Kullanılmayan artıklar temizlendi: boş `string.java` sınıfı silindi, `CartController`'daki kullanılmayan `userRepository` enjeksiyonu kaldırıldı, `Header.tsx`'teki `import { title } from "process"` ve `layout.tsx`'teki kullanılmayan `Link` / `styles` import'ları atıldı, varsayılan "Create Next App" metadata'sı proje adıyla değiştirildi ve `<html lang>` `tr` yapıldı.
 > - Ürün / kategori / banner yazma uçları `ADMIN` rolüne kilitlendi, `/admin` sayfaları rol kontrolüyle sarmalandı.
 > - Sepet ve favorilerdeki **IDOR** açıkları kapatıldı (sahiplik kontrolü — bkz. *Yetkilendirme Modeli*).
 > - Frontend'in tamamı `useApi` kullanıyor; gömülü API adresi kalmadı, token yalnızca `AuthContext` tarafından okunuyor/yazılıyor.

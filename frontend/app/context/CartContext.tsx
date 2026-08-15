@@ -49,6 +49,20 @@ export const CartProvider = ({ children }: { children: React.ReactNode }) => {
 
   const apiFetch = useApi();
 
+  // Backend'in reddettiği bir sepet isteğinin sebebini kullanıcıya duyurur.
+  // Header bu olayı dinleyip toast gösterir — "loginRequired" ile aynı yöntem.
+  // Bu olmadan istek sessizce düşer ve kullanıcı butonun neden işe yaramadığını anlamaz.
+  const notifyCartError = async (res: Response) => {
+    let message = "İşlem gerçekleştirilemedi.";
+    try {
+      const data = await res.json();
+      if (data?.message) message = data.message;
+    } catch {
+      // Gövdesiz yanıt (ör. 401/403) — varsayılan mesajla devam.
+    }
+    window.dispatchEvent(new CustomEvent("cartError", { detail: message }));
+  };
+
   const fetchCart = async () => {
     if (!user || !token) return; // giriş yoksa sepet çekme
     try {
@@ -82,6 +96,8 @@ export const CartProvider = ({ children }: { children: React.ReactNode }) => {
         const data = await res.json();
         setCart(data);
         window.dispatchEvent(new Event("cartAdded"));
+      } else {
+        await notifyCartError(res);
       }
     } catch (error) {
       console.error("Sepete eklerken hata oluştu:", error);
@@ -96,6 +112,8 @@ export const CartProvider = ({ children }: { children: React.ReactNode }) => {
       if (res.ok) {
         const data = await res.json();
         setCart(data);
+      } else {
+        await notifyCartError(res);
       }
     } catch (error) {
       console.error("Sepet güncellenirken hata oluştu:", error);

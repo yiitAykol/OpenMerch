@@ -1,11 +1,13 @@
 package com.example.productapi;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.security.core.Authentication;
 import org.springframework.http.HttpStatus;
 
+import java.util.Map;
 import java.util.Optional;
 
 @RestController
@@ -21,8 +23,32 @@ public class CartController {
     @Autowired
     private ProductRepository productRepository;
 
-    @Autowired
-    private UserRepository userRepository;
+    // Bir üründen sepete alınabilecek en fazla adet. Hem ekleme (POST) hem de
+    // güncelleme (PUT) ucunda geçerlidir; ikisinden biri kontrolsüz kalırsa
+    // sınırın hiçbir anlamı kalmaz.
+    private static final int MAX_QUANTITY_PER_ITEM = 100;
+
+    // Kullanıcının sepetini getirir, yoksa oluşturur.
+    //
+    // "Önce bak, yoksa oluştur" bir yarış durumu barındırır: sepeti henüz olmayan
+    // bir kullanıcının iki isteği aynı anda gelirse ikisi de "sepet yok" görür ve
+    // ikisi de oluşturmaya kalkar. Bu boşluk kod tarafında kapatılamaz; tek gerçek
+    // hakem veritabanıdır. cart.user_id üzerindeki UNIQUE kısıtı ikinci kaydı
+    // reddeder, biz de burada o reddi yakalayıp yarışı kazanan isteğin oluşturduğu
+    // sepeti okuruz. Yakalanmazsa kullanıcı bu tamamen normal durumda 500 alır.
+    private Cart getOrCreateCart(User user) {
+        Cart cart = cartRepository.findByUserId(user.getId());
+        if (cart != null) {
+            return cart;
+        }
+        try {
+            return cartRepository.save(new Cart(user));
+        } catch (DataIntegrityViolationException e) {
+            // Yarışı kaybettik: bu arada başka bir istek sepeti oluşturdu.
+            // Hata değil, beklenen sonuç — onun sepetiyle devam ediyoruz.
+            return cartRepository.findByUserId(user.getId());
+        }
+    }
 
     // Get Cart for User
     @GetMapping
@@ -30,13 +56,8 @@ public class CartController {
         if (authentication == null || !(authentication.getPrincipal() instanceof User user)) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
-        
-        Cart cart = cartRepository.findByUserId(user.getId());
-        if (cart == null) {
-            cart = new Cart(user);
-            cartRepository.save(cart);
-        }
-        return ResponseEntity.ok(cart);
+
+        return ResponseEntity.ok(getOrCreateCart(user));
     }
 
     public static class CartItemRequest {
@@ -45,34 +66,32 @@ public class CartController {
     }
 
     @PostMapping("/items")
-    public ResponseEntity<Cart> addItemToCart(Authentication authentication, @RequestBody CartItemRequest request) {
+    public ResponseEntity<?> addItemToCart(Authentication authentication, @RequestBody CartItemRequest request) {
         if (authentication == null || !(authentication.getPrincipal() instanceof User user)) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
 
-        Cart cart = cartRepository.findByUserId(user.getId());
-
-        if(request.productId == null)
-        {
-            return ResponseEntity.badRequest().build();
+        if (request.productId == null) {
+            return ResponseEntity.badRequest().body(Map.of("message", "productId zorunludur."));
         }
 
-        if(request.quantity <= 0 || request.quantity > 100)
-        {
-            return ResponseEntity.badRequest().build();
+        // Tek istekteki adet sınırı. Bu kontrol TEK BAŞINA yeterli değildir:
+        // aynı ürün için üst üste istek atılabilir, o yüzden aşağıda sepetteki
+        // toplam adet de kontrol edilir.
+        if (request.quantity <= 0 || request.quantity > MAX_QUANTITY_PER_ITEM) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "message", "Adet 1 ile " + MAX_QUANTITY_PER_ITEM + " arasında olmalıdır."));
         }
-
 
         Optional<Product> productOpt = productRepository.findById(request.productId);
         if (productOpt.isEmpty()) {
-            return ResponseEntity.badRequest().build();
+            return ResponseEntity.badRequest().body(Map.of("message", "Ürün bulunamadı."));
         }
         Product product = productOpt.get();
-        
-        if (cart == null) {
-            cart = new Cart(user);
-            cartRepository.save(cart);
-        }
+
+        // Sepet, girdiler doğrulandıktan sonra alınır: geçersiz bir istek yüzünden
+        // boş yere sepet oluşturmanın anlamı yok.
+        Cart cart = getOrCreateCart(user);
 
         Optional<CartItem> existingItem = cart.getItems().stream()
                 .filter(item -> item.getProduct().getId().equals(product.getId()))
@@ -80,7 +99,16 @@ public class CartController {
 
         if (existingItem.isPresent()) {
             CartItem item = existingItem.get();
-            item.setQuantity(item.getQuantity() + request.quantity);
+            // Sepette zaten bu üründen varsa sınır, mevcut adet + gelen adet
+            // üzerinden hesaplanır. Yalnızca gelen adede bakmak sınırı delerdi:
+            // 50'yi üç kez gönderen 150 adete ulaşır ve bu miktar siparişe geçerdi.
+            int newQuantity = item.getQuantity() + request.quantity;
+            if (newQuantity > MAX_QUANTITY_PER_ITEM) {
+                return ResponseEntity.badRequest().body(Map.of(
+                        "message", "Bir üründen en fazla " + MAX_QUANTITY_PER_ITEM
+                                + " adet alabilirsiniz. Sepetinizde şu an " + item.getQuantity() + " adet var."));
+            }
+            item.setQuantity(newQuantity);
             cartItemRepository.save(item);
         } else {
             CartItem newItem = new CartItem(cart, product, request.quantity);
@@ -94,9 +122,9 @@ public class CartController {
 
         // Update quantity
     @PutMapping("/items/{itemId}")
-    public ResponseEntity<Cart> updateItemQuantity(Authentication authentication,
-                                                   @PathVariable Long itemId,
-                                                   @RequestParam int quantity) {
+    public ResponseEntity<?> updateItemQuantity(Authentication authentication,
+                                                @PathVariable Long itemId,
+                                                @RequestParam int quantity) {
         // 1) Kimlik: isteği kim yapıyor?
         if (authentication == null || !(authentication.getPrincipal() instanceof User user)) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
@@ -115,6 +143,14 @@ public class CartController {
         }
 
         // 4) İşlem
+        // Adet doğrudan buradan da set edilebildiği için sınır burada da gerekir;
+        // yoksa POST'taki kontrol bir işe yaramaz, istemci tek PUT ile istediği
+        // sayıyı yazar.
+        if (quantity > MAX_QUANTITY_PER_ITEM) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "message", "Bir üründen en fazla " + MAX_QUANTITY_PER_ITEM + " adet alabilirsiniz."));
+        }
+
         if (quantity <= 0) {
             cartItemRepository.delete(item);
         } else {
