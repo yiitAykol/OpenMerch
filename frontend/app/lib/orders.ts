@@ -44,6 +44,17 @@ export const ORDER_STATUS_LABELS: Record<string, string> = {
 // Admin panelindeki durum seçim kutusu bu sırayı kullanır.
 export const ORDER_STATUS_OPTIONS = Object.keys(ORDER_STATUS_LABELS);
 
+// Kullanıcının kendi siparişini iptal edebildiği durumlar.
+// Backend'deki OrderController.CANCELLABLE_STATUSES'ın kopyasıdır — bilinçli bir
+// tekrar. Buradaki kopya yalnızca butonu gösterip gizler, yani bir kolaylıktır;
+// asıl kararı her zaman backend verir. Bu liste yanlış olsa bile kural delinmez,
+// kullanıcı sadece işe yaramayacak bir buton görür.
+export const CANCELLABLE_STATUSES = ["NEW", "PREPARING"];
+
+export function canCancel(status: string): boolean {
+    return CANCELLABLE_STATUSES.includes(status);
+}
+
 export function statusLabel(status: string): string {
     return ORDER_STATUS_LABELS[status] ?? status;
 }

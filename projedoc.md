@@ -66,6 +66,10 @@ Bu doküman, Spring Boot ve Next.js kullanılarak geliştirilen "StackBootProjec
    - **Atomiklik:** Sipariş oluşturma ile sepetin boşaltılması `@Transactional` ile tek işlemdir; araya giren bir hata "sepet boşaldı ama sipariş yok" gibi yarım bir durum bırakamaz.
    - **Sepetin boşaltılması:** `cart.getItems().clear()` yeterlidir — `Cart.items` üzerindeki `orphanRemoval = true` sahipsiz kalan kalemleri siler. Frontend'de `CartContext.refreshCart()` çağrılır, aksi halde Header'daki sepet sayacı boşalmış sepeti eski adediyle göstermeye devam ederdi.
    - **Sipariş durumları:** `NEW` (Sipariş Alındı), `PREPARING` (Hazırlanıyor), `SHIPPED` (Kargoya Verildi), `DELIVERED` (Teslim Edildi), `CANCELLED` (İptal Edildi). Durum metinleri ve biçimlendirme yardımcıları `app/lib/orders.ts` içinde toplanmıştır.
+   - **Sipariş İptali (kullanıcı tarafı):** Kullanıcı kendi siparişini yalnızca `NEW` veya `PREPARING` durumundayken iptal edebilir (`PUT /api/orders/{id}/cancel`). Kargoya verilmiş veya teslim edilmiş sipariş iptal edilemez; zaten iptal edilmiş bir sipariş tekrar iptal edilmeye çalışılırsa 400 döner — sessizce 200 dönmek kullanıcıya "az önceki tıklaman işe yaradı" gibi yanlış bir geri bildirim verirdi. Sipariş detay sayfasında iki adımlı bir onay vardır; istek uçarken buton kilitlenir, aksi halde üst üste tıklama aynı isteği tekrar gönderirdi. Backend güncel siparişi döndürdüğü için arayüz sayfayı yenilemeden rozeti günceller.
+     - **Adminin durum ucu bilerek paylaşılmıyor:** `PUT /api/admin/orders/{id}/status` keyfî durum yazmaya izin verir ve `ADMIN`'e kilitlidir. Kullanıcıya verilen yetki "durum değiştirme" değil, "kendi siparişini iptal etme"dir — hedef durum yolun kendisinde sabittir, istek gövdesi yoktur.
+     - **Kural iki yerde durur, ama görevleri farklıdır:** `OrderController.CANCELLABLE_STATUSES` **karar verir**; `app/lib/orders.ts` içindeki `CANCELLABLE_STATUSES` / `canCancel()` yalnızca **butonu gösterip gizler**. Frontend'deki liste yanlış olsa bile kural delinmez, kullanıcı sadece işe yaramayacak bir buton görür.
+     - **Kapsam dışı:** İptal edilen siparişin ürünleri stoğa geri eklenmez — `Product`'ta stok alanı yoktur.
    - **Kapsam dışı:** Ödeme entegrasyonu ve stok düşürme yoktur (`Product`'ta stok alanı bulunmuyor). Checkout, sepeti siparişe çevirmekle sınırlıdır.
 
 5. **Yönetim Paneli (Admin Panel) - *[GÜNCELLENDİ]* **
@@ -115,7 +119,9 @@ if (authentication == null || !(authentication.getPrincipal() instanceof User us
 // 4) İşlem
 ```
 
-Uygulandığı yerler: `CartController.updateItemQuantity`, `CartController.removeItem`, `FavoriteController.deleteFavorite`, `OrderController.getOrder`.
+Uygulandığı yerler: `CartController.updateItemQuantity`, `CartController.removeItem`, `FavoriteController.deleteFavorite`, `OrderController.getOrder`, `OrderController.cancelOrder`.
+
+> `cancelOrder` bu dört adımın üzerine bir beşincisini ekler: **durum geçişi geçerli mi?** Bu bir yetki sorusu değil, iş kuralı sorusudur — "bu senin siparişin mi" ile "bu sipariş şu an iptal edilebilir mi" ayrı sorulardır ve ayrı ayrı cevaplanır.
 
 > **Not:** Sipariş kaydı ad, adres ve telefon içerdiği için `OrderController.getOrder`'daki kontrol diğerlerinden daha kritiktir; atlanırsa id deneyerek kişisel veri okunabilirdi. Bu kontrol **admin için de** sıkıdır: admin başkasının siparişini `/api/orders/{id}` üzerinden göremez, yolu `/api/admin/orders`'tır. Yetki, yetkinin tanımlı olduğu kapıdan verilir.
 
@@ -204,6 +210,7 @@ Erişim sütunu: 🌐 herkese açık · 🔑 giriş gerekir · 👑 `ADMIN` rol�
 | **POST** | `/api/orders` | 🔑 | Sepeti siparişe çevirir ve sepeti boşaltır. Gövde: `{fullName, address, city, phone, note?, invoiceRequired?, invoiceTitle?, taxOffice?, taxId?}`. Boş sepette 400 döner. |
 | **GET** | `/api/orders` | 🔑 | Kullanıcının siparişlerini listeler (en yenisi üstte). |
 | **GET** | `/api/orders/{id}` | 🔑 | Tek siparişi getirir. Sahiplik kontrolü vardır: başkasının siparişinde 403. |
+| **PUT** | `/api/orders/{id}/cancel` | 🔑 | Kullanıcının kendi siparişini iptal eder. Gövde yok. Sahiplik kontrolü vardır (403). Durum `NEW` / `PREPARING` değilse 400 + mesaj. Güncel siparişi döner. |
 | **GET** | `/api/admin/orders` | 👑 | Tüm siparişleri listeler (en yenisi üstte). |
 | **PUT** | `/api/admin/orders/{id}/status` | 👑 | Sipariş durumunu günceller. Gövde: `{status}`. Tanımlı olmayan durum 400 döner. |
 
@@ -298,11 +305,11 @@ Dürüst kalsın diye not düşülmüştür; henüz **kapatılmamıştır**:
 **Hata yönetimi / veri bütünlüğü**
 
 2. **Şifre değişince eski token'lar geçerli kalıyor:** JWT'de iptal (revocation) mekanizması yok; şifresini değiştiren kullanıcının önceki token'ı süresi dolana kadar çalışmaya devam eder.
-3. **Sipariş iptali kullanıcı tarafında yok:** `CANCELLED` durumunu yalnızca admin verebiliyor.
 
 **Kod kalitesi**
 
-4. **Test yok:** Yalnızca varsayılan `contextLoads` testi mevcut. Sipariş akışı (sahiplik kontrolü, snapshot, sepetin boşalması) test edilmeye en uygun yer.
+3. **Test yok:** Yalnızca varsayılan `contextLoads` testi mevcut. Sipariş akışı (sahiplik kontrolü, snapshot, sepetin boşalması, iptal durum geçişleri) test edilmeye en uygun yer.
+4. **Toast kodu üç kez kopyalanmış:** `Header.tsx` içinde favori bildirimi, `loginRequired` ve `cartError` neredeyse aynı inline-style bloğunu tekrar ediyor; tek bir `Toast` bileşenine çıkması gerekir.
 
 > **Kapatılanlar:**
 > - Sepet yarış durumu ele alındı. (Not: bu madde eskiden "`Cart.user` üzerinde unique kısıtı yok, iki sepet oluşabilir" diye yazılmıştı; **yanlıştı**. Hibernate `@OneToOne`'dan kısıtı üretmiş, canlı şemada `cart.user_id` üzerinde `UNIQUE` duruyor. Yani veri bütünlüğü hiç bozulmuyordu; asıl sorun, kısıtın reddettiği ikinci kaydın yakalanmaması ve kullanıcının 500 almasıydı.) Sepet oluşturma tek bir `getOrCreateCart` metoduna toplandı, `DataIntegrityViolationException` yakalanıp yarışı kazanan isteğin sepeti okunuyor.
@@ -314,3 +321,4 @@ Dürüst kalsın diye not düşülmüştür; henüz **kapatılmamıştır**:
 > - `FavoriteController` hataları `RuntimeException` (500) yerine anlamlı HTTP kodlarıyla dönüyor.
 > - Sipariş / checkout akışı eklendi; `OrderController.getOrder` sahiplik kontrolüyle korunuyor.
 > - Hesap silme artık siparişleri de temizliyor. (Önceden `Order.user` foreign key'i yüzünden siparişi olan kullanıcı hesabını silemezdi.)
+> - Kullanıcı kendi siparişini iptal edebiliyor (`PUT /api/orders/{id}/cancel`). Yetki adminin durum ucundan ödünç alınmadı, ayrı bir uç açıldı: kullanıcıya "durum değiştirme" değil "iptal etme" yetkisi verildi.

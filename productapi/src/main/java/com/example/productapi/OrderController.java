@@ -10,10 +10,16 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 @RestController
 @RequestMapping("/api/orders")
 public class OrderController {
+
+    // Kullanıcının kendi siparişini iptal edebileceği durumlar. Kural tek yerde
+    // dursun diye sabit; if içine gömülürse ileride "hangi durumlar iptal
+    // edilebilir" sorusunun cevabı koda dağılır.
+    private static final Set<String> CANCELLABLE_STATUSES = Set.of("NEW", "PREPARING");
 
     private final OrderRepository orderRepository;
     private final CartRepository cartRepository;
@@ -139,6 +145,44 @@ public class OrderController {
 
         // 4) İşlem
         return ResponseEntity.ok(order);
+    }
+
+    // SİPARİŞ İPTALİ: kullanıcı kendi siparişini iptal eder.
+    //
+    // Adminin /api/admin/orders/{id}/status ucu bilerek paylaşılmıyor: o uç
+    // ADMIN'e kilitli ve keyfî durum yazmaya izin verir. Buradaki yetki
+    // "durum değiştirme" değil, "kendi siparişini iptal etme" yetkisidir.
+    @PutMapping("/{id}/cancel")
+    public ResponseEntity<?> cancelOrder(Authentication authentication, @PathVariable Long id) {
+        // 1) Kimlik
+        if (authentication == null || !(authentication.getPrincipal() instanceof User user)) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        // 2) Nesneyi bul
+        Order order = orderRepository.findById(id).orElse(null);
+        if (order == null) {
+            return ResponseEntity.notFound().build();
+        }
+
+        // 3) Sahiplik: başkasının siparişi iptal edilemez (IDOR)
+        if (order.getUser() == null || !order.getUser().getId().equals(user.getId())) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
+        }
+
+        // 4) Durum geçişi geçerli mi? Kargoya verilmiş ya da teslim edilmiş bir
+        //    sipariş geri alınamaz; zaten iptal edilmişi tekrar iptal etmek de
+        //    sessizce başarılı sayılmamalı — kullanıcı yanlış geri bildirim alır.
+        if (!CANCELLABLE_STATUSES.contains(order.getStatus())) {
+            String message = "CANCELLED".equals(order.getStatus())
+                    ? "Bu sipariş zaten iptal edilmiş."
+                    : "Kargoya verilmiş veya teslim edilmiş bir sipariş iptal edilemez.";
+            return ResponseEntity.badRequest().body(Map.of("message", message));
+        }
+
+        // 5) İşlem
+        order.setStatus("CANCELLED");
+        return ResponseEntity.ok(orderRepository.save(order));
     }
 
     private boolean isBlank(String value) {

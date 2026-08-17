@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "../../context/AuthContext";
 import { useApi } from "../../lib/useApi";
-import { OrderType, formatDate, formatPrice, statusLabel } from "../../lib/orders";
+import { OrderType, canCancel, formatDate, formatPrice, statusLabel } from "../../lib/orders";
 import styles from "../orders.module.scss";
 
 export default function OrderDetailPage() {
@@ -18,6 +18,14 @@ export default function OrderDetailPage() {
 
   const [order, setOrder] = useState<OrderType | null>(null);
   const [error, setError] = useState("");
+
+  // İptal akışının üç ayrı durumu var:
+  // confirming → onay kutusu açık mı (geri dönüşü olmayan işlem, tek tıkla olmaz)
+  // cancelling → istek uçuyor mu (butonu kilitler, çift istek gitmesin)
+  // cancelError → backend reddettiyse sebebi
+  const [confirming, setConfirming] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
+  const [cancelError, setCancelError] = useState("");
 
   useEffect(() => {
     if (!loading && !user) {
@@ -50,6 +58,39 @@ export default function OrderDetailPage() {
 
     fetchOrder();
   }, [user, orderId]);
+
+  const handleCancel = async () => {
+    setCancelError("");
+    setCancelling(true);
+
+    try {
+      const res = await apiFetch(`/api/orders/${orderId}/cancel`, { method: "PUT" });
+
+      if (res.ok) {
+        // Backend güncel siparişi döndürüyor; state'e koyunca rozet ve buton
+        // kendiliğinden "İptal Edildi"ye geçer, sayfayı yenilemeye gerek kalmaz.
+        setOrder(await res.json());
+        setConfirming(false);
+      } else {
+        // 400 gövdesinde sebep var (ör. bu arada admin kargoya vermiş olabilir).
+        // 401/403 gövdesizdir; o yüzden json() bir try içinde.
+        let message = "Sipariş iptal edilemedi.";
+        try {
+          const data = await res.json();
+          if (data?.message) message = data.message;
+        } catch {
+          // Gövdesiz yanıt — varsayılan mesajla devam.
+        }
+        setCancelError(message);
+      }
+    } catch (err) {
+      console.error("Sipariş iptal edilirken hata oluştu:", err);
+      setCancelError("Sunucuya ulaşılamadı.");
+    } finally {
+      // Başarıda da hatada da butonun kilidi açılmalı.
+      setCancelling(false);
+    }
+  };
 
   if (loading || !user) {
     return <div className={styles.info}>Yükleniyor...</div>;
@@ -170,6 +211,59 @@ export default function OrderDetailPage() {
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {/* İptal bölümü yalnızca iptal edilebilir durumlarda görünür. Bu bir
+          kolaylıktır, güvenlik değil: kural backend'de de var, buradaki kontrol
+          kaldırılsa bile kargodaki bir sipariş iptal edilemez. */}
+      {canCancel(order.status) && (
+        <div className={styles.section}>
+          <h2 className={styles.sectionTitle}>Siparişi İptal Et</h2>
+
+          {!confirming ? (
+            <>
+              <p className={styles.summary}>
+                Siparişinizi kargoya verilene kadar iptal edebilirsiniz.
+              </p>
+              <button
+                type="button"
+                className={styles.cancelButton}
+                onClick={() => setConfirming(true)}
+              >
+                Siparişi İptal Et
+              </button>
+            </>
+          ) : (
+            <>
+              <p className={styles.confirmText}>
+                Bu işlem geri alınamaz. #{order.id} numaralı sipariş iptal edilsin mi?
+              </p>
+              <div className={styles.confirmRow}>
+                <button
+                  type="button"
+                  className={styles.cancelButton}
+                  onClick={handleCancel}
+                  disabled={cancelling}
+                >
+                  {cancelling ? "İptal ediliyor..." : "Evet, iptal et"}
+                </button>
+                <button
+                  type="button"
+                  className={styles.secondaryButton}
+                  onClick={() => {
+                    setConfirming(false);
+                    setCancelError("");
+                  }}
+                  disabled={cancelling}
+                >
+                  Vazgeç
+                </button>
+              </div>
+            </>
+          )}
+
+          {cancelError && <div className={styles.cancelError}>{cancelError}</div>}
         </div>
       )}
     </div>
