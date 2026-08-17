@@ -5,6 +5,7 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import org.hibernate.annotations.ColumnDefault;
 
 @Entity
 public class Product {
@@ -20,17 +21,31 @@ public class Product {
      // Kategori alanı (Default olarak "T-Shirts" atayabilirsin)
     private String category = "T-Shirts";
 
+    // Eldeki adet. Siparişte düşer, sipariş iptalinde geri eklenir.
+    //
+    // @ColumnDefault olmadan Hibernate bu kolonu "not null" olarak eklemeye
+    // çalışır; PostgreSQL ise dolu bir tabloya varsayılansız NOT NULL kolon
+    // eklemeyi reddeder. Yani bu satır olmadan ddl-auto=update mevcut ürünleri
+    // olan bir veritabanında patlardı.
+    @ColumnDefault("0")
+    private int stock = 0;
+
     // 1. Boş constructor — JPA bunu ister
     public Product() {
     }
 
     // 2. (İsteğe bağlı) örnek veri eklerken kolaylık olsun diye
     public Product(String name, String description, BigDecimal price, String imageUrl, String category) {
+        this(name, description, price, imageUrl, category, 0);
+    }
+
+    public Product(String name, String description, BigDecimal price, String imageUrl, String category, int stock) {
         this.name = name;
         this.description = description;
         this.price = price;
         this.imageUrl = imageUrl;
-        this.category = category != null ? category : "T-Shirts";   
+        this.category = category != null ? category : "T-Shirts";
+        this.stock = stock;
     }
 
     // Getter / Setter'lar
@@ -74,5 +89,14 @@ public class Product {
     }
     public void setCategory(String category) {
         this.category = category != null ? category : "T-Shirts";
+    }
+
+    public int getStock() {
+        return stock;
+    }
+    public void setStock(int stock) {
+        // Negatif stok anlamsız; gelen değeri burada sıfıra çekiyoruz ki
+        // admin formundan gelen bir hata veritabanına yazılmasın.
+        this.stock = Math.max(stock, 0);
     }
 }

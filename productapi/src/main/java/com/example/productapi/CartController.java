@@ -89,6 +89,10 @@ public class CartController {
         }
         Product product = productOpt.get();
 
+        if (product.getStock() <= 0) {
+            return ResponseEntity.badRequest().body(Map.of("message", "Bu ürün tükendi."));
+        }
+
         // Sepet, girdiler doğrulandıktan sonra alınır: geçersiz bir istek yüzünden
         // boş yere sepet oluşturmanın anlamı yok.
         Cart cart = getOrCreateCart(user);
@@ -108,9 +112,18 @@ public class CartController {
                         "message", "Bir üründen en fazla " + MAX_QUANTITY_PER_ITEM
                                 + " adet alabilirsiniz. Sepetinizde şu an " + item.getQuantity() + " adet var."));
             }
+            if (newQuantity > product.getStock()) {
+                return ResponseEntity.badRequest().body(Map.of(
+                        "message", "Stokta yalnızca " + product.getStock() + " adet var."
+                                + " Sepetinizde şu an " + item.getQuantity() + " adet bulunuyor."));
+            }
             item.setQuantity(newQuantity);
             cartItemRepository.save(item);
         } else {
+            if (request.quantity > product.getStock()) {
+                return ResponseEntity.badRequest().body(Map.of(
+                        "message", "Stokta yalnızca " + product.getStock() + " adet var."));
+            }
             CartItem newItem = new CartItem(cart, product, request.quantity);
             cartItemRepository.save(newItem);
             cart.getItems().add(newItem);
@@ -149,6 +162,19 @@ public class CartController {
         if (quantity > MAX_QUANTITY_PER_ITEM) {
             return ResponseEntity.badRequest().body(Map.of(
                     "message", "Bir üründen en fazla " + MAX_QUANTITY_PER_ITEM + " adet alabilirsiniz."));
+        }
+
+        // Stok sınırı da tıpkı adet sınırı gibi iki uçta birden gerekir; yoksa
+        // istemci tek bir PUT ile stoğun üzerine çıkar.
+        //
+        // Not: buradaki kontrol bir KOLAYLIKTIR, garanti değildir. Sepet bir
+        // rezervasyon değil, bir listedir — kullanıcı sepete koyduktan sonra stok
+        // başkası tarafından tüketilebilir. Bağlayıcı kontrol checkout'taki
+        // koşullu UPDATE'tir; burası sadece kullanıcıyı erken uyarır.
+        Product product = item.getProduct();
+        if (product != null && quantity > product.getStock()) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "message", "Stokta yalnızca " + product.getStock() + " adet var."));
         }
 
         if (quantity <= 0) {

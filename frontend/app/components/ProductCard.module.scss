@@ -90,6 +90,40 @@
   &:active {
     transform: scale(0.95);
   }
+
+  /* Tükenmiş üründe buton pasif: hover/scale efektleri de kapanmalı,
+     yoksa tıklanabilirmiş gibi görünür. */
+  &:disabled {
+    background: #9ca3af;
+    cursor: not-allowed;
+
+    &:hover {
+      transform: none;
+      background: #9ca3af;
+    }
+  }
+}
+
+/* Tükenen ürünün görseli üzerindeki şerit */
+.outOfStockBadge {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: rgba(17, 17, 17, 0.85);
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+/* Stok azaldığında fiyatın altındaki uyarı */
+.lowStock {
+  margin-top: 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #b91c1c;
 }
 
 /* Sepet butonunun üstündeki adet rozeti */

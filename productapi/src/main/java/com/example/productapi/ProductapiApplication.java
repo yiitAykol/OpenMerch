@@ -33,8 +33,8 @@ public class ProductapiApplication {
 
 			// Örnek Ürünleri Oluşturma (sadece hiç ürün yoksa)
 			if (productRepository.count() == 0) {
-				productRepository.save(new Product("Kahve", "Taze çekilmiş", BigDecimal.valueOf(120.0), "https://...", "İçecekler"));
-				productRepository.save(new Product("Çay", "Demlik çayı", BigDecimal.valueOf(80.0), "https://...", "İçecekler"));
+				productRepository.save(new Product("Kahve", "Taze çekilmiş", BigDecimal.valueOf(120.0), "https://...", "İçecekler", 25));
+				productRepository.save(new Product("Çay", "Demlik çayı", BigDecimal.valueOf(80.0), "https://...", "İçecekler", 40));
 				// birkaç tane daha
 			}
 		};

@@ -17,6 +17,7 @@ export default function AddProductPage() {
     name: "",
     description: "",
     price: "",
+    stock: "",
     imageUrl: "",
     category: "",
   });
@@ -54,8 +55,12 @@ export default function AddProductPage() {
       const res = await apiFetch("/api/products", {
         method: "POST",
         body: JSON.stringify({
+          // Form alanları metin olarak tutulur; backend price için sayı,
+          // stock için tam sayı bekler. parseInt olmadan Jackson "12" metnini
+          // int alana yazamaz ve istek 400 döner.
           ...formData,
           price: parseFloat(formData.price),
+          stock: parseInt(formData.stock, 10) || 0,
         }),
       });
 
@@ -130,14 +135,29 @@ export default function AddProductPage() {
           </div>
 
           <div className={styles.formGroup}>
+            <label htmlFor="stock">Stok Adedi</label>
+            <input
+              type="number"
+              id="stock"
+              name="stock"
+              required
+              min="0"
+              step="1"
+              value={formData.stock}
+              onChange={handleChange}
+              placeholder="Örn: 25"
+            />
+          </div>
+
+          <div className={styles.formGroup}>
             <label htmlFor="imageUrl">Görsel URL</label>
-            <input 
-              type="url" 
-              id="imageUrl" 
-              name="imageUrl" 
-              required 
-              value={formData.imageUrl} 
-              onChange={handleChange} 
+            <input
+              type="url"
+              id="imageUrl"
+              name="imageUrl"
+              required
+              value={formData.imageUrl}
+              onChange={handleChange}
               placeholder="Örn: https://example.com/image.jpg"
             />
           </div>

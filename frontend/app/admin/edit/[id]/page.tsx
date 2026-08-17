@@ -19,6 +19,7 @@ export default function EditProductPage() {
     name: "",
     description: "",
     price: "",
+    stock: "",
     imageUrl: "",
     category: "",
   });
@@ -50,6 +51,9 @@ export default function EditProductPage() {
               name: product.name,
               description: product.description,
               price: product.price.toString(),
+              // Stok alanı eski ürünlerde tanımsız gelebilir; boş string
+              // yerine "0" koyuyoruz ki input kontrolsüz (uncontrolled) olmasın.
+              stock: (product.stock ?? 0).toString(),
               imageUrl: product.imageUrl,
               category: product.category ?? "",
             });
@@ -85,6 +89,7 @@ export default function EditProductPage() {
         body: JSON.stringify({
           ...formData,
           price: parseFloat(formData.price),
+          stock: parseInt(formData.stock, 10) || 0,
         }),
       });
 
@@ -163,14 +168,28 @@ export default function EditProductPage() {
           </div>
 
           <div className={styles.formGroup}>
+            <label htmlFor="stock">Stok Adedi</label>
+            <input
+              type="number"
+              id="stock"
+              name="stock"
+              required
+              min="0"
+              step="1"
+              value={formData.stock}
+              onChange={handleChange}
+            />
+          </div>
+
+          <div className={styles.formGroup}>
             <label htmlFor="imageUrl">Görsel URL</label>
-            <input 
-              type="url" 
-              id="imageUrl" 
-              name="imageUrl" 
-              required 
-              value={formData.imageUrl} 
-              onChange={handleChange} 
+            <input
+              type="url"
+              id="imageUrl"
+              name="imageUrl"
+              required
+              value={formData.imageUrl}
+              onChange={handleChange}
             />
           </div>
 

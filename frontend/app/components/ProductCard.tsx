@@ -15,6 +15,7 @@ export interface Product {
     price: number;
     imageUrl: string;
     category: string; // Kategori alanımız
+    stock: number;
 }
 
 export default function ProductCard({ product, isFavorite, onRemove, favoriteId }: { product: Product; isFavorite?: boolean; onRemove?: () => void; favoriteId?: number | null; }) {
@@ -36,6 +37,10 @@ export default function ProductCard({ product, isFavorite, onRemove, favoriteId 
 
     // Bu ürünün sepette kaç adet olduğu (her eklemede otomatik artar)
     const qtyInCart = cart?.items.find((i) => i.product.id === product.id)?.quantity ?? 0;
+
+    // Stok bitmişse sepete ekleme yolu kapanır. Bu bir kolaylıktır, güvenlik
+    // değil: backend hem sepete eklerken hem de siparişte ayrıca kontrol eder.
+    const isOutOfStock = product.stock <= 0;
 
     async function handleStarClick() {
         // Favoriler sayfasındaysak (onRemove verilmişse) tıklayınca favoriden çıkar
@@ -106,12 +111,16 @@ export default function ProductCard({ product, isFavorite, onRemove, favoriteId 
                     </svg>
                 </button>
 
+                {/* Stok bitmişse görselin üstüne şerit */}
+                {isOutOfStock && <div className={styles.outOfStockBadge}>Tükendi</div>}
+
                 {/* Sağ altta sepete ekle: minimal ikon buton + adet sayısı */}
                 {!isFavorite && (
                     <button
                         className={styles.cartButton}
                         onClick={() => addToCart(product.id, 1)}
-                        aria-label="Sepete Ekle"
+                        disabled={isOutOfStock}
+                        aria-label={isOutOfStock ? "Ürün tükendi" : "Sepete Ekle"}
                     >
                         <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
                             <path
@@ -133,6 +142,10 @@ export default function ProductCard({ product, isFavorite, onRemove, favoriteId 
                 <div className={styles.name}>{product.name}</div>
             </Link>
             <div className={styles.price}>{product.price} TL</div>
+            {/* Az kaldıysa aciliyet hissi ver; bol stokta sayıyı göstermeye gerek yok. */}
+            {product.stock > 0 && product.stock <= 5 && (
+                <div className={styles.lowStock}>Son {product.stock} ürün!</div>
+            )}
         </div>
     );
 }

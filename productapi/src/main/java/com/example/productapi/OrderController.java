@@ -23,11 +23,37 @@ public class OrderController {
 
     private final OrderRepository orderRepository;
     private final CartRepository cartRepository;
+    private final ProductRepository productRepository;
 
     public OrderController(OrderRepository orderRepository,
-                           CartRepository cartRepository) {
+                           CartRepository cartRepository,
+                           ProductRepository productRepository) {
         this.orderRepository = orderRepository;
         this.cartRepository = cartRepository;
+        this.productRepository = productRepository;
+    }
+
+    // Stok yetmediğinde fırlatılır.
+    //
+    // Neden istisna, neden `return ResponseEntity.badRequest()` değil:
+    // checkout metodu @Transactional'dır ve stok düşürme işlemi kalem kalem
+    // ilerler. Üçüncü kalemde stok yetmezse ilk ikisinin stoğu ZATEN düşmüştür.
+    // Spring, bir metottan hata YANITI dönmesini "başarısızlık" saymaz —
+    // transaction commit edilir ve o iki düşüş kalıcı olur. Geri alma yalnızca
+    // kontrolsüz (unchecked) bir istisna ile tetiklenir. Bu sınıfın tek varlık
+    // sebebi budur.
+    public static class InsufficientStockException extends RuntimeException {
+        public InsufficientStockException(String message) {
+            super(message);
+        }
+    }
+
+    // Yukarıdaki istisna buraya düşer ve kullanıcıya 400 + sebep olarak döner.
+    // Sıralama önemli: istisna önce @Transactional sarmalayıcısından geçer
+    // (transaction geri alınır), sonra Spring MVC bu metodu çağırır.
+    @ExceptionHandler(InsufficientStockException.class)
+    public ResponseEntity<?> handleInsufficientStock(InsufficientStockException e) {
+        return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
     }
 
     // Checkout formundan gelen teslimat/fatura bilgileri.
@@ -95,11 +121,24 @@ public class OrderController {
         for (CartItem cartItem : cartItems) {
             Product product = cartItem.getProduct();
             // Ürün silinmişse sepette artık kalemi olmamalı; yine de yarım sipariş
-            // oluşturmaktansa isteği reddediyoruz.
+            // oluşturmaktansa isteği reddediyoruz. Buraya kadar hiçbir yazma
+            // yapılmadığı için düz `return` güvenli.
             if (product == null) {
                 return ResponseEntity.badRequest().body(Map.of(
                         "message", "Sepetinizde artık satışta olmayan bir ürün var. Lütfen sepetinizi yenileyin."));
             }
+
+            // STOK DÜŞÜRME. Kontrol ve düşürme tek bir atomik UPDATE'te birleşir;
+            // "önce stoğa bak, sonra düşür" deseydik son ürünü iki kişiye satardık.
+            // Sıfır satır etkilendiyse stok yetmemiştir.
+            int updated = productRepository.decreaseStock(product.getId(), cartItem.getQuantity());
+            if (updated == 0) {
+                // Buradan sonrası kritik: önceki kalemlerin stoğu zaten düşmüş
+                // olabilir. Yanıt döndürmek transaction'ı geri ALMAZ, istisna alır.
+                throw new InsufficientStockException(
+                        product.getName() + " için yeterli stok yok. Sepetinizi güncelleyip tekrar deneyin.");
+            }
+
             // Fiyat/isim/görsel burada kopyalanır (snapshot) — ürün sonradan
             // değişse veya silinse bile sipariş geçmişi olduğu gibi kalır.
             order.addItem(new OrderItem(product, cartItem.getQuantity()));
@@ -153,6 +192,7 @@ public class OrderController {
     // ADMIN'e kilitli ve keyfî durum yazmaya izin verir. Buradaki yetki
     // "durum değiştirme" değil, "kendi siparişini iptal etme" yetkisidir.
     @PutMapping("/{id}/cancel")
+    @Transactional
     public ResponseEntity<?> cancelOrder(Authentication authentication, @PathVariable Long id) {
         // 1) Kimlik
         if (authentication == null || !(authentication.getPrincipal() instanceof User user)) {
@@ -180,7 +220,19 @@ public class OrderController {
             return ResponseEntity.badRequest().body(Map.of("message", message));
         }
 
-        // 5) İşlem
+        // 5) İşlem: stoğu geri ekle, sonra durumu değiştir.
+        //
+        // @Transactional burada şart: stok geri eklemeleri ile durum değişikliği
+        // tek bir işlem olmalı. Aksi halde araya giren bir hata "stok geri geldi
+        // ama sipariş hâlâ aktif" gibi yarım bir durum bırakabilirdi.
+        for (OrderItem item : order.getItems()) {
+            // productId FK değildir; ürün silinmiş olabilir. O zaman sorgu 0 satır
+            // etkiler ve bu normaldir — geri eklenecek bir stok kalmamıştır.
+            if (item.getProductId() != null) {
+                productRepository.increaseStock(item.getProductId(), item.getQuantity());
+            }
+        }
+
         order.setStatus("CANCELLED");
         return ResponseEntity.ok(orderRepository.save(order));
     }

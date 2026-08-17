@@ -47,6 +47,9 @@ public class ProductController{
             product.setPrice(productDetails.getPrice());
             product.setImageUrl(productDetails.getImageUrl());
             product.setCategory(productDetails.getCategory());
+            // Alan alan kopyalıyoruz; bu satır unutulursa her düzenlemede stok
+            // sessizce sıfırlanır ve ürün satılamaz hale gelirdi.
+            product.setStock(productDetails.getStock());
             Product updatedProduct = repository.save(product);
             return org.springframework.http.ResponseEntity.ok(updatedProduct);
         } else {

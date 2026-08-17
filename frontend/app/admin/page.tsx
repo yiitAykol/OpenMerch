@@ -11,6 +11,7 @@ type Product = {
   description: string;
   price: number;
   imageUrl: string;
+  stock: number;
 };
 
 export default function AdminPage() {
@@ -87,6 +88,7 @@ export default function AdminPage() {
             <th>Görsel</th>
             <th>Ürün Adı</th>
             <th>Fiyat</th>
+            <th>Stok</th>
             <th>İşlemler</th>
           </tr>
         </thead>
@@ -111,6 +113,19 @@ export default function AdminPage() {
               </td>
               <td>{product.price} TL</td>
               <td>
+                {/* Tükenmiş ve azalmış ürün listede göze çarpsın; admin hangi
+                    ürünü yenilemesi gerektiğini tabloya bakar bakmaz görsün. */}
+                <span
+                  style={{
+                    fontWeight: 600,
+                    color:
+                      product.stock <= 0 ? "#b91c1c" : product.stock <= 5 ? "#b45309" : "#15803d",
+                  }}
+                >
+                  {product.stock <= 0 ? "Tükendi" : product.stock}
+                </span>
+              </td>
+              <td>
                 <div className={styles.actionButtons}>
                   <Link href={`/admin/edit/${product.id}`} className={styles.editBtn}>
                     Düzenle
@@ -127,7 +142,7 @@ export default function AdminPage() {
           ))}
           {products.length === 0 && (
             <tr>
-              <td colSpan={4} style={{ textAlign: 'center', padding: '2rem' }}>
+              <td colSpan={5} style={{ textAlign: 'center', padding: '2rem' }}>
                 Henüz hiç ürün eklenmemiş.
               </td>
             </tr>

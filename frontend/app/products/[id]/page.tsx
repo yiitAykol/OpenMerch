@@ -99,6 +99,8 @@ export default function ProductDetailPage() {
     if (loading) return <div style={{ textAlign: "center", padding: '50px' }}>Ürün Yükleniyor...</div>;
     if (!product) return <div style={{ textAlign: "center", padding: '50px' }}>Ürün bulunamadı!</div>;
 
+    const isOutOfStock = product.stock <= 0;
+
     return (
         <div className={styles.container}>
 
@@ -116,15 +118,24 @@ export default function ProductDetailPage() {
                 <h2 className={styles.price}>{product.price} TL</h2>
                 <div className={styles.description}>{product.description}</div>
 
-
+                {/* Stok durumu. Üç ayrı hal var çünkü kullanıcıya söylenmesi
+                    gereken şey her birinde farklı. */}
+                {isOutOfStock ? (
+                    <div className={styles.stockOut}>Tükendi</div>
+                ) : product.stock <= 5 ? (
+                    <div className={styles.stockLow}>Son {product.stock} ürün!</div>
+                ) : (
+                    <div className={styles.stockIn}>Stokta var</div>
+                )}
 
                 {/* BUTONLAR */}
                 <div className={styles.buttonGroup}>
                     <button
                         className={styles.cartButton}
                         onClick={() => addToCart(product.id, 1)}
+                        disabled={isOutOfStock}
                     >
-                        Add to cart
+                        {isOutOfStock ? "Tükendi" : "Add to cart"}
                     </button>
                     <button
                         className={styles.favButton}
