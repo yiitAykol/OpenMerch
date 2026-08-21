@@ -39,6 +39,7 @@ Bu doküman, Spring Boot ve Next.js kullanılarak geliştirilen "StackBootProjec
    - **Kategori Sekmeleri:** Ana sayfada kategoriler yatay sekme çubuğu olarak listelenir, seçilen kategoriye göre ürünler filtrelenir. Sekme çubuğu ok tuşlarıyla kaydırılabilir.
    - **Banner Slider'ı:** Yönetici tarafından eklenen banner'lar ana sayfada 4 saniyede bir otomatik dönen slider'da gösterilir.
    - **Ürün Detay Sayfası (`/products/{id}`):** Görsel, kategori, fiyat, açıklama; sepete ekle ve favori aç/kapa butonları.
+   - **Stok Göstergesi:** Ürün kartında stok bittiyse görselin üstünde "Tükendi" şeridi belirir ve sepete ekle butonu pasifleşir; 5 ve altındaki stokta fiyatın altında "Son N ürün!" uyarısı çıkar. Detay sayfasında durum üç halde gösterilir: "Stokta var" / "Son N ürün!" / "Tükendi".
 
 2. **Favori Sistemi (Favorites) - *[GÜNCELLENDİ]* **
    - **Güvenli Altyapı:** Favori ekleme/çıkarma isteklerinin tamamı `useApi` üzerinden JWT token ile gider. (Önceden bazı çağrılarda token unutulmuş ve uç nokta korumaya alındığında sessizce 403 dönmeye başlamıştı; artık token eklemek merkezî ve otomatiktir.)
@@ -55,6 +56,7 @@ Bu doküman, Spring Boot ve Next.js kullanılarak geliştirilen "StackBootProjec
      - Ürün miktarını (Quantity) `+` ve `-` butonlarıyla artırıp azaltabilme.
      - İstenilen ürünü sepetten tamamen kaldırabilme.
      - Birim fiyat * miktar çarpımı ve en altta **Genel Toplam** tutarının gösterilmesi.
+   - **Stok Uyarısı:** Sepetteki adet stoğu aşıyorsa kalemin altında uyarı çıkar, `+` butonu kilitlenir ve "Siparişi Tamamla" pasifleşir. Kullanıcı sepete koyduktan sonra stok başkası tarafından tüketilmiş olabilir; bunu ödeme formunu doldurduktan sonra değil, burada öğrenmelidir.
 
 4. **Sipariş / Ödeme Akışı (Checkout & Orders) - *[YENİ]* **
    - **Siparişi Tamamla (`/checkout`):** Sepet sayfasındaki butonla açılır. Solda teslimat bilgileri (ad soyad, adres, şehir, telefon, sipariş notu) ve isteğe bağlı fatura bilgileri, sağda sipariş özeti bulunur. "Fatura istiyorum" işaretlenirse fatura başlığı ve vergi/TC numarası zorunlu olur — aynı doğrulama backend'de de vardır.
@@ -69,12 +71,14 @@ Bu doküman, Spring Boot ve Next.js kullanılarak geliştirilen "StackBootProjec
    - **Sipariş İptali (kullanıcı tarafı):** Kullanıcı kendi siparişini yalnızca `NEW` veya `PREPARING` durumundayken iptal edebilir (`PUT /api/orders/{id}/cancel`). Kargoya verilmiş veya teslim edilmiş sipariş iptal edilemez; zaten iptal edilmiş bir sipariş tekrar iptal edilmeye çalışılırsa 400 döner — sessizce 200 dönmek kullanıcıya "az önceki tıklaman işe yaradı" gibi yanlış bir geri bildirim verirdi. Sipariş detay sayfasında iki adımlı bir onay vardır; istek uçarken buton kilitlenir, aksi halde üst üste tıklama aynı isteği tekrar gönderirdi. Backend güncel siparişi döndürdüğü için arayüz sayfayı yenilemeden rozeti günceller.
      - **Adminin durum ucu bilerek paylaşılmıyor:** `PUT /api/admin/orders/{id}/status` keyfî durum yazmaya izin verir ve `ADMIN`'e kilitlidir. Kullanıcıya verilen yetki "durum değiştirme" değil, "kendi siparişini iptal etme"dir — hedef durum yolun kendisinde sabittir, istek gövdesi yoktur.
      - **Kural iki yerde durur, ama görevleri farklıdır:** `OrderController.CANCELLABLE_STATUSES` **karar verir**; `app/lib/orders.ts` içindeki `CANCELLABLE_STATUSES` / `canCancel()` yalnızca **butonu gösterip gizler**. Frontend'deki liste yanlış olsa bile kural delinmez, kullanıcı sadece işe yaramayacak bir buton görür.
-     - **Kapsam dışı:** İptal edilen siparişin ürünleri stoğa geri eklenmez — `Product`'ta stok alanı yoktur.
-   - **Kapsam dışı:** Ödeme entegrasyonu ve stok düşürme yoktur (`Product`'ta stok alanı bulunmuyor). Checkout, sepeti siparişe çevirmekle sınırlıdır.
+     - **Stok geri eklenir:** İptal edilen siparişin kalemleri stoğa geri döner. `cancelOrder` bu yüzden `@Transactional`'dır — stok geri eklemeleri ile durum değişikliği tek işlemdir. `OrderItem.productId` bir FK olmadığı için ürün bu arada silinmiş olabilir; o durumda güncelleme 0 satır etkiler ve bu beklenen sonuçtur.
+   - **Stok Düşürme (kritik tasarım kararı):** Stok, sepete eklerken değil **sipariş anında** düşer. Sepet bir rezervasyon değil, bir listedir; aksi halde sepette unutulan ürünler stoğu süresiz tutar ve bunu çözmek için zamanlanmış bir "rezervasyonu bırak" işi yazmak gerekirdi. Düşürme, `ProductRepository.decreaseStock` ile koşullu tek bir UPDATE olarak yapılır (bkz. *Stok Yarış Durumu*).
+   - **Kapsam dışı:** Ödeme entegrasyonu yoktur. Checkout, sepeti siparişe çevirmekle sınırlıdır.
 
 5. **Yönetim Paneli (Admin Panel) - *[GÜNCELLENDİ]* **
    - **Erişim:** Yalnızca `role = ADMIN` olan kullanıcılar. `/admin` altındaki tüm sayfalar `app/admin/layout.tsx` ile korunur: giriş yoksa `/login`'e, rol yetersizse ana sayfaya yönlendirilir.
-   - **Ürün Yönetimi (`/admin`):** Ürün listesi tablosu; ekleme (`/admin/add`), düzenleme (`/admin/edit/{id}`) ve silme. Ürün silinirken o ürüne ait sepet kalemleri ve favoriler de temizlenir (foreign key hatası olmaması için).
+   - **Ürün Yönetimi (`/admin`):** Ürün listesi tablosu; ekleme (`/admin/add`), düzenleme (`/admin/edit/{id}`) ve silme. Ürün silinirken o ürüne ait sepet kalemleri ve favoriler de temizlenir (foreign key hatası olmaması için). Listede **Stok** kolonu vardır: tükenmiş ürün kırmızı "Tükendi", 5 ve altı turuncu, gerisi yeşil gösterilir. Ekleme ve düzenleme formlarında stok adedi alanı bulunur.
+     - **Dikkat:** `ProductController.updateProduct` alanları tek tek kopyalar. `setStock` satırı unutulursa **her düzenlemede stok sessizce sıfırlanır** ve ürün satılamaz hale gelir — sebebi de kolay anlaşılmaz. Yeni bir alan eklendiğinde bu metot da güncellenmelidir.
    - **Kategori Yönetimi (`/admin/categories`):** Kategori ekleme ve silme. Aynı isimde ikinci kategori eklenemez.
    - **Banner Yönetimi (`/admin/banners`):** Ana sayfa slider'ına banner ekleme/silme, URL girilirken canlı önizleme.
    - **Sipariş Yönetimi (`/admin/orders`):** Tüm siparişler en yenisi üstte listelenir; müşteri, tutar ve durum görünür. Durum açılır kutudan güncellenir, "Göster" ile satırın altında kalemler ve teslimat/fatura bilgileri açılır. Geçerli durumlar backend'de sabit bir kümede tutulur (`AdminOrderController.ALLOWED_STATUSES`), böylece arayüzden gelen rastgele bir metin veritabanına yazılamaz.
@@ -137,7 +141,7 @@ Dikkat edilecek iki nokta:
 Backend tarafında JPA kullanılarak veritabanı tabloları ile nesneler eşleştirilmiştir:
 
 - **`User` (Kullanıcı):** Sisteme giriş yapan veya varsayılan kullanıcıları tutar (`id`, `username`, `email`, `password` (BCrypt hash), `enabled`, `role`, `verificationCode`, `verificationExpiry`). Hassas alanlar (`password`, `verificationCode`, `verificationExpiry`) `@JsonIgnore` ile API yanıtlarına sızmaz. `role` alanı `"USER"` veya `"ADMIN"` değerini alır, varsayılanı `"USER"`'dır.
-- **`Product` (Ürün):** Satışta olan ürünleri tutar (`id`, `name`, `description`, `price (BigDecimal)`, `imageUrl`, `category`).
+- **`Product` (Ürün):** Satışta olan ürünleri tutar (`id`, `name`, `description`, `price (BigDecimal)`, `imageUrl`, `category`, `stock (int)`). `stock` alanında `@ColumnDefault("0")` vardır: bu olmadan Hibernate kolonu `not null` olarak eklemeye çalışır, PostgreSQL ise **dolu bir tabloya varsayılansız NOT NULL kolon eklemeyi reddeder** ve `ddl-auto=update` açılışta patlar. `setStock` negatif değeri sıfıra çeker.
 - **`Category` (Kategori):** Ürün kategorilerinin listesi (`id`, `name` — unique). Ürünle ilişki metin üzerinden kurulur (`Product.category`), foreign key yoktur.
 - **`Banner` (Afiş):** Ana sayfa slider'ındaki görseller (`id`, `imageUrl`, `title`).
 - **`Favorite` (Favori):** Hangi ürünün hangi kullanıcı tarafından favorilere eklendiğini temsil eder (`@ManyToOne User`, `@ManyToOne Product`).
@@ -175,6 +179,64 @@ try {
 
 > Bu `catch` bloğu yakalamasaydı veri yine bozulmazdı (kısıt korur), ama kullanıcı tamamen normal bir durumda **500 Internal Server Error** görürdü. Yani buradaki kazanç veri bütünlüğü değil, dürüst hata davranışıdır.
 
+### Stok Yarış Durumu (Race Condition)
+
+Stok düşürmenin "doğal" hali sepet yarış durumunun birebir aynısıdır — kontrol ile davranış arasında yine bir boşluk vardır:
+
+```java
+if (product.getStock() >= adet) {                   // kontrol
+    product.setStock(product.getStock() - adet);    // davranış
+}
+```
+
+Stok 1 iken iki istek aynı anda gelirse ikisi de kontrol anında "1 var" görür, ikisi de düşürür; stok `-1` olur ve **aynı ürün iki kişiye satılır**.
+
+Çözüm yine aynı: hakem veritabanı olmalı. Ama burada hakem bir kısıt değil, sorgunun kendisidir — kontrol ve davranış tek bir atomik `UPDATE`'te birleştirilir:
+
+```java
+@Modifying
+@Query("UPDATE Product p SET p.stock = p.stock - :quantity WHERE p.id = :id AND p.stock >= :quantity")
+int decreaseStock(@Param("id") Long id, @Param("quantity") int quantity);
+```
+
+`WHERE p.stock >= :quantity` kontroldür, `SET` davranıştır. Metodun **`int` dönmesi** kilit noktadır: kaç satır etkilendiğini verir. `0` dönerse stok yetmemiştir — bu bir hata değil, cevabın kendisidir.
+
+> `@Modifying` şarttır; Spring Data varsayılan olarak `@Query`'nin okuma yaptığını varsayar.
+
+### `@Transactional` içinde hata dönmek geri alma YAPMAZ
+
+Stok düşürme kalem kalem ilerler. Üçüncü kalemde stok yetmezse ilk ikisinin stoğu **zaten düşmüştür.** Bu noktada şöyle yazmak sinsi bir veri bozulmasıdır:
+
+```java
+if (updated == 0) {
+    return ResponseEntity.badRequest().body(...);   // ← TUZAK
+}
+```
+
+Kullanıcı 400 alır, sipariş oluşmaz — ama ilk iki ürünün stoğu **kalıcı olarak düşer.** Çünkü Spring, bir metottan hata *yanıtı* dönmesini başarısızlık saymaz; `ResponseEntity` yalnızca bir nesnedir, metot normal biçimde tamamlanmıştır, transaction commit edilir. Kimsenin almadığı ürünler stoktan silinir.
+
+Geri alma **yalnızca kontrolsüz (unchecked) bir istisna** ile tetiklenir:
+
+```java
+public static class InsufficientStockException extends RuntimeException { ... }
+
+throw new InsufficientStockException(product.getName() + " için yeterli stok yok...");
+```
+
+`RuntimeException`'dan türetmek zorunludur; `Exception`'dan (checked) türetilseydi Spring varsayılan olarak geri **almazdı**. Kullanıcı yine anlamlı bir 400 görsün diye istisna `OrderController.handleInsufficientStock` (`@ExceptionHandler`) tarafından yakalanır. Sıralama doğrudur: istisna önce `@Transactional` sarmalayıcısından geçer (transaction geri alınır), **sonra** Spring MVC handler'ı çağırır.
+
+> `checkout` metodundaki diğer erken `return`'ler (boş sepet, eksik adres) hâlâ düz `return`'dür — onlar hiçbir yazma yapılmadan önce çalışır, geri alınacak bir şey yoktur.
+
+### Stok kontrolü üç yerdedir, ama üçü aynı şey değildir
+
+| Yer | Görevi | Bağlayıcı mı |
+| :--- | :--- | :--- |
+| Frontend (buton pasif, "Tükendi") | Kullanıcı boşuna tıklamasın | Hayır |
+| `CartController` (sepete ekleme / adet güncelleme) | Erken uyarı | Hayır |
+| `OrderController.checkout` (koşullu UPDATE) | **Karar** | **Evet** |
+
+Sepetteki kontrol neden garanti değildir: sepet bir rezervasyon değil, bir listedir. Ürün sepete konduktan sonra o stok başkası tarafından tüketilebilir. "Zaten sepette kontrol ettim" deyip checkout'taki kontrolü atlamak kolay bir hatadır ve tam da en pahalı yerde patlar.
+
 ---
 
 ## 🛠️ API Uç Noktaları (Endpoints)
@@ -204,13 +266,13 @@ Erişim sütunu: 🌐 herkese açık · 🔑 giriş gerekir · 👑 `ADMIN` rol�
 | **POST** | `/api/favorites` | 🔑 | Favoriye ekler. Gövde: `{productId}`. Ürün zaten favorideyse 409 döner. Yanıt, oluşan **favori kaydını** (id'siyle birlikte) içerir. |
 | **DELETE** | `/api/favorites/{id}` | 🔑 | Favoriden çıkarır. Buradaki `id` ürünün değil, **favori kaydının** id'sidir. Sahiplik kontrolü vardır: başkasının favorisinde 403. |
 | **GET** | `/api/cart` | 🔑 | Giriş yapan kullanıcının sepetini ve içindeki öğeleri getirir. |
-| **POST** | `/api/cart/items` | 🔑 | Sepete yeni ürün ekler (veya miktarını artırır). Gövde: `{productId, quantity}`. Ürün sepette zaten varsa **mevcut + gelen** adet sınırı (100) aşarsa 400 + mesaj döner. |
-| **PUT** | `/api/cart/items/{itemId}?quantity=X` | 🔑 | Sepetteki bir ürünün miktarını günceller. `X > 100` ise 400 + mesaj; `X <= 0` ise kalem silinir. Sahiplik kontrolü vardır. |
+| **POST** | `/api/cart/items` | 🔑 | Sepete yeni ürün ekler (veya miktarını artırır). Gövde: `{productId, quantity}`. Ürün sepette zaten varsa **mevcut + gelen** adet sınırı (100) aşarsa 400 + mesaj döner. Stok 0 ise veya toplam adet stoğu aşarsa 400 + mesaj. |
+| **PUT** | `/api/cart/items/{itemId}?quantity=X` | 🔑 | Sepetteki bir ürünün miktarını günceller. `X > 100` veya `X > stok` ise 400 + mesaj; `X <= 0` ise kalem silinir. Sahiplik kontrolü vardır. |
 | **DELETE** | `/api/cart/items/{itemId}` | 🔑 | İlgili ürünü sepetten tamamen çıkartır. |
-| **POST** | `/api/orders` | 🔑 | Sepeti siparişe çevirir ve sepeti boşaltır. Gövde: `{fullName, address, city, phone, note?, invoiceRequired?, invoiceTitle?, taxOffice?, taxId?}`. Boş sepette 400 döner. |
+| **POST** | `/api/orders` | 🔑 | Sepeti siparişe çevirir, **stoğu düşürür** ve sepeti boşaltır. Gövde: `{fullName, address, city, phone, note?, invoiceRequired?, invoiceTitle?, taxOffice?, taxId?}`. Boş sepette 400. Herhangi bir kalemde stok yetmezse 400 + mesaj döner ve **tüm işlem geri alınır**. |
 | **GET** | `/api/orders` | 🔑 | Kullanıcının siparişlerini listeler (en yenisi üstte). |
 | **GET** | `/api/orders/{id}` | 🔑 | Tek siparişi getirir. Sahiplik kontrolü vardır: başkasının siparişinde 403. |
-| **PUT** | `/api/orders/{id}/cancel` | 🔑 | Kullanıcının kendi siparişini iptal eder. Gövde yok. Sahiplik kontrolü vardır (403). Durum `NEW` / `PREPARING` değilse 400 + mesaj. Güncel siparişi döner. |
+| **PUT** | `/api/orders/{id}/cancel` | 🔑 | Kullanıcının kendi siparişini iptal eder ve **stoğu geri ekler**. Gövde yok. Sahiplik kontrolü vardır (403). Durum `NEW` / `PREPARING` değilse 400 + mesaj. Güncel siparişi döner. |
 | **GET** | `/api/admin/orders` | 👑 | Tüm siparişleri listeler (en yenisi üstte). |
 | **PUT** | `/api/admin/orders/{id}/status` | 👑 | Sipariş durumunu günceller. Gövde: `{status}`. Tanımlı olmayan durum 400 döner. |
 
@@ -292,6 +354,20 @@ docker exec product-db psql -U postgres -d productdb -c "SELECT id, email, role 
 
 > `role` kolonu uygulama açılışında Hibernate tarafından (`ddl-auto=update`) otomatik eklenir. Kolon yoksa backend'i bir kez yeniden başlatın.
 
+### 📦 Mevcut Veritabanına Stok Kolonu
+
+`stock` kolonu da `ddl-auto=update` ile otomatik eklenir (`@ColumnDefault("0")` sayesinde dolu tabloda da sorun çıkarmaz). Yine de eklenmezse elle:
+
+```powershell
+docker exec product-db psql -U postgres -d productdb -c "ALTER TABLE product ADD COLUMN IF NOT EXISTS stock INTEGER NOT NULL DEFAULT 0;"
+```
+
+**Önemli:** Varsayılan `0`'dır, yani stok özelliği eklendikten sonra **eski ürünlerin hepsi "Tükendi" görünür.** Geliştirme ortamında toplu doldurmak için:
+
+```powershell
+docker exec product-db psql -U postgres -d productdb -c "UPDATE product SET stock = 20 WHERE stock = 0;"
+```
+
 ---
 
 ## 🚧 Bilinen Açıklar (Sıradaki İşler)
@@ -322,3 +398,4 @@ Dürüst kalsın diye not düşülmüştür; henüz **kapatılmamıştır**:
 > - Sipariş / checkout akışı eklendi; `OrderController.getOrder` sahiplik kontrolüyle korunuyor.
 > - Hesap silme artık siparişleri de temizliyor. (Önceden `Order.user` foreign key'i yüzünden siparişi olan kullanıcı hesabını silemezdi.)
 > - Kullanıcı kendi siparişini iptal edebiliyor (`PUT /api/orders/{id}/cancel`). Yetki adminin durum ucundan ödünç alınmadı, ayrı bir uç açıldı: kullanıcıya "durum değiştirme" değil "iptal etme" yetkisi verildi.
+> - Stok takibi eklendi. (Bu madde eskiden "kapsam dışı" diye yazılıydı.) Stok siparişte düşer, iptalde geri gelir; düşürme koşullu tek bir UPDATE olduğu için son ürün iki kişiye satılamaz. Yol boyunca `@Transactional` içinde hata **yanıtı** dönmenin geri alma yapmadığı öğrenildi — stok yetmediğinde artık istisna fırlatılıyor.
