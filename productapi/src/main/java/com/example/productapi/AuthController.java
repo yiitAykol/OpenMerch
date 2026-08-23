@@ -6,9 +6,13 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
+import jakarta.servlet.http.HttpServletRequest;
+
 import java.security.SecureRandom;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 
@@ -19,6 +23,14 @@ public class AuthController {
     private static final SecureRandom RANDOM = new SecureRandom();
     private static final long CODE_TTL_MINUTES = 15;
 
+    // Deneme limitleri. Saymayı RateLimiter yapar; "kaç deneme, ne kadar süre" ise
+    // bir iş kuralıdır ve tek yerde, burada durur.
+    private static final int REGISTER_MAX_ATTEMPTS = 5;
+    private static final int LOGIN_MAX_ATTEMPTS = 5;
+    private static final int VERIFY_MAX_ATTEMPTS = 5;
+    private static final int RESEND_MAX_ATTEMPTS = 3;
+    private static final Duration RATE_LIMIT_WINDOW = Duration.ofMinutes(10);
+
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final EmailService emailService;
@@ -26,6 +38,7 @@ public class AuthController {
     private final CartRepository cartRepository;
     private final FavoriteRepository favoriteRepository;
     private final OrderRepository orderRepository;
+    private final RateLimiter rateLimiter;
 
     public AuthController(UserRepository userRepository,
                           PasswordEncoder passwordEncoder,
@@ -33,7 +46,8 @@ public class AuthController {
                           JwtService jwtService,
                           CartRepository cartRepository,
                           FavoriteRepository favoriteRepository,
-                          OrderRepository orderRepository) {
+                          OrderRepository orderRepository,
+                          RateLimiter rateLimiter) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.emailService = emailService;
@@ -41,6 +55,7 @@ public class AuthController {
         this.cartRepository = cartRepository;
         this.favoriteRepository = favoriteRepository;
         this.orderRepository = orderRepository;
+        this.rateLimiter = rateLimiter;
     }
 
     // ---- İstek gövdeleri (DTO) ----
@@ -71,7 +86,15 @@ public class AuthController {
 
     // 1) KAYIT: kullanıcıyı devre dışı (enabled=false) oluşturur, kod üretir ve e-posta atar.
     @PostMapping("/register")
-    public ResponseEntity<?> register(@RequestBody RegisterRequest req) {
+    public ResponseEntity<?> register(@RequestBody RegisterRequest req, HttpServletRequest request) {
+        // Anahtar burada e-posta olamaz: kayıt var olan adresi zaten reddediyor, saldırgan
+        // her istekte yeni bir adres kullanır ve her biri ayrı kovaya düşer. Kötüye
+        // kullanımın ortak noktası kaynak IP'dir.
+        String key = rateKey("register", request.getRemoteAddr());
+        if (!rateLimiter.tryConsume(key, REGISTER_MAX_ATTEMPTS, RATE_LIMIT_WINDOW)) {
+            return tooManyRequests(key);
+        }
+
         if (req.username == null || req.username.isBlank()
                 || req.email == null || req.email.isBlank()
                 || req.password == null || req.password.length() < 6) {
@@ -101,6 +124,12 @@ public class AuthController {
     // 2) DOĞRULAMA: koda ve süreye bakar, doğruysa hesabı aktifleştirir ve JWT döner.
     @PostMapping("/verify")
     public ResponseEntity<?> verify(@RequestBody VerifyRequest req) {
+        // Limit önce: 6 haneli kod aksi halde süresi dolana dek kaba kuvvetle denenebilir.
+        String key = rateKey("verify", req.email);
+        if (!rateLimiter.tryConsume(key, VERIFY_MAX_ATTEMPTS, RATE_LIMIT_WINDOW)) {
+            return tooManyRequests(key);
+        }
+
         Optional<User> opt = userRepository.findByEmail(req.email == null ? "" : req.email);
         if (opt.isEmpty()) {
             return ResponseEntity.badRequest().body(Map.of("message", "Kullanıcı bulunamadı."));
@@ -119,6 +148,9 @@ public class AuthController {
             return ResponseEntity.badRequest().body(Map.of("message", "Kod hatalı."));
         }
 
+        // Kod doğru: sayacı bırakıyoruz, sonraki denemeler sıfırdan başlar.
+        rateLimiter.reset(key);
+
         user.setEnabled(true);
         user.setVerificationCode(null);
         user.setVerificationExpiry(null);
@@ -134,12 +166,21 @@ public class AuthController {
     // 3) GİRİŞ: şifre ve doğrulanmışlık kontrolü, başarılıysa JWT döner.
     @PostMapping("/login")
     public ResponseEntity<?> login(@RequestBody LoginRequest req) {
+        // Limit, DB sorgusundan ve bcrypt karşılaştırmasından önce: ikisi de pahalıdır.
+        String key = rateKey("login", req.email);
+        if (!rateLimiter.tryConsume(key, LOGIN_MAX_ATTEMPTS, RATE_LIMIT_WINDOW)) {
+            return tooManyRequests(key);
+        }
+
         Optional<User> opt = userRepository.findByEmail(req.email == null ? "" : req.email);
         if (opt.isEmpty() || opt.get().getPassword() == null
                 || !passwordEncoder.matches(req.password, opt.get().getPassword())) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                     .body(Map.of("message", "E-posta veya şifre hatalı."));
         }
+
+        // Şifre doğrulandı; bu bir kaba kuvvet denemesi değil, sayacı sıfırla.
+        rateLimiter.reset(key);
 
         User user = opt.get();
         if (!user.isEnabled()) {
@@ -157,6 +198,12 @@ public class AuthController {
     // 4) KODU TEKRAR GÖNDER
     @PostMapping("/resend")
     public ResponseEntity<?> resend(@RequestBody ResendRequest req) {
+        // Burada reset yok: başarı/başarısızlık ayrımı yok, her istek gerçek bir e-posta yolluyor.
+        String key = rateKey("resend", req.email);
+        if (!rateLimiter.tryConsume(key, RESEND_MAX_ATTEMPTS, RATE_LIMIT_WINDOW)) {
+            return tooManyRequests(key);
+        }
+
         Optional<User> opt = userRepository.findByEmail(req.email == null ? "" : req.email);
         if (opt.isEmpty()) {
             return ResponseEntity.badRequest().body(Map.of("message", "Kullanıcı bulunamadı."));
@@ -245,6 +292,25 @@ public class AuthController {
             System.err.println("[Auth] E-posta gönderilemedi (" + user.getEmail()
                     + "). Kod: " + user.getVerificationCode() + " | Hata: " + e.getMessage());
         }
+    }
+
+    // Anahtar uç bazında ayrılır ("login:ali@x.com"): yoksa login denemeleri verify
+    // kotasını yer ve kullanıcı neden yasaklandığını anlayamaz. Anahtarın kimliği uca
+    // göre değişir: login/verify/resend e-postayı, register kaynak IP'yi kullanır.
+    // Locale.ROOT şart: Türkçe locale'de "I".toLowerCase() sonucu "i" değil "ı" olur,
+    // aynı adres iki ayrı kovaya düşerdi.
+    private static String rateKey(String prefix, String email) {
+        return prefix + ":" + (email == null ? "" : email.trim().toLowerCase(Locale.ROOT));
+    }
+
+    // Limit aşıldığında dönen 429. Retry-After standart bir başlıktır: istemciye
+    // kaç saniye sonra tekrar deneyebileceğini söyler.
+    private ResponseEntity<?> tooManyRequests(String key) {
+        long retryAfter = rateLimiter.retryAfterSeconds(key);
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .header("Retry-After", String.valueOf(retryAfter))
+                .body(Map.of("message",
+                        "Çok fazla deneme yapıldı. " + retryAfter + " saniye sonra tekrar deneyin."));
     }
 
     private Map<String, Object> publicUser(User user) {

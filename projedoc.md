@@ -8,7 +8,7 @@ Bu doküman, Spring Boot ve Next.js kullanılarak geliştirilen "StackBootProjec
 - **Dil / Çerçeve:** Java, Spring Boot
 - **Veritabanı:** PostgreSQL 16 (Docker ile ayağa kalkar — bkz. *Geliştirici Ortamı*). Şema Hibernate tarafından otomatik üretilir (`ddl-auto=update`).
 - **Veri Erişim:** Spring Data JPA (Hibernate)
-- **Mimari:** RESTful API — `Controller` → `Repository` → `Entity`. **Ayrı bir service katmanı yoktur:** iş mantığı controller'ların içindedir. `EmailService` ve `JwtService` bu kuralın istisnasıdır; ikisi de birden fazla yerden çağrılan teknik yardımcılardır, iş kuralı taşımazlar.
+- **Mimari:** RESTful API — `Controller` → `Repository` → `Entity`. **Ayrı bir service katmanı yoktur:** iş mantığı controller'ların içindedir. `EmailService`, `JwtService` ve `RateLimiter` bu kuralın istisnasıdır; üçü de birden fazla yerden çağrılan teknik yardımcılardır, iş kuralı taşımazlar.
 - **Veri Tipleri:** Finansal hesaplamalar için `BigDecimal` kullanımı.
 - **Güvenlik / Kimlik Doğrulama:** Spring Security, JWT (jjwt), şifreler için BCrypt hash.
 - **Yetkilendirme:** Rol tabanlı (`USER` / `ADMIN`). Rol kullanıcı kaydında tutulur, her istekte veritabanından okunur.
@@ -33,6 +33,7 @@ Bu doküman, Spring Boot ve Next.js kullanılarak geliştirilen "StackBootProjec
    - **Oturum Yönetimi:** Token frontend'de `AuthContext` üzerinden `localStorage`'da tutulur. Sayfa yenilendiğinde `/api/auth/me` ile kullanıcı geri yüklenir. Header'da girişliyse kullanıcı adı + "Çıkış", değilse "Giriş / Üye Ol" gösterilir.
    - **Hesap Yönetimi (`/account`):** Şifre değiştirme (eski şifre doğrulamasıyla) ve hesabı kalıcı silme. Hesap silinirken kullanıcının sepeti ve favorileri de temizlenir.
    - **Güvenlik:** REST API stateless çalışır (sunucuda session yok). Vitrin uç noktaları (ürün/kategori/banner **okuma**) herkese açıktır; sepet, favoriler ve hesap işlemleri geçerli JWT ister; yazma işlemleri `ADMIN` rolü ister.
+   - **Deneme Limiti:** Kayıt, giriş, doğrulama ve kod tekrar gönderme uçları sınırsız denenemez; limit aşılınca `429 Too Many Requests` döner (bkz. *Deneme Limiti*).
 
 1. **Ürün Listeleme (Product Listing)**
    - Backend'den çekilen ürünlerin (`ProductCard` bileşeni ile) grid şeklinde ana sayfada gösterilmesi.
@@ -133,6 +134,39 @@ Dikkat edilecek iki nokta:
 
 - **`.equals()` kullanılır, `==` değil.** `getId()` bir `Long` nesnesi döndürür; `==` referans karşılaştırır. Java `-128..127` aralığındaki `Long` değerlerini önbelleklediği için `==` küçük id'lerde çalışıyormuş gibi görünür, id'ler büyüyünce sessizce bozulur.
 - **Yanıt, isteği yapanın verisiyle kurulur.** Örneğin `cartRepository.findByUserId(user.getId())` — `item.getCart().getUser().getId()` değil. Sahiplik kontrolünden sonra ikisi aynıdır, ancak ilki niyeti açık kılar ve kontrol ileride kaldırılsa bile başkasının verisini sızdırmaz.
+
+---
+
+## 🚦 Deneme Limiti (Rate Limiting)
+
+Kimlik uçları sınırsız denenebilirse şifre ya da doğrulama kodu er geç bulunur: 6 haneli kod 1.000.000 ihtimaldir ve saniyede birkaç istekle 15 dakikadan kısa sürede taranabilir. `RateLimiter` bu uçlara bir üst sınır koyar.
+
+| Uç | Anahtar | Limit | Ne sayılır |
+| :--- | :--- | :--- | :--- |
+| `/api/auth/register` | Kaynak IP | 5 / 10 dk | Her istek |
+| `/api/auth/login` | E-posta | 5 / 10 dk | Yalnızca başarısız deneme |
+| `/api/auth/verify` | E-posta | 5 / 10 dk | Yalnızca başarısız deneme |
+| `/api/auth/resend` | E-posta | 3 / 10 dk | Her istek |
+
+Limit aşılınca `429 Too Many Requests` döner; yanıtta hem açıklayıcı bir mesaj hem de standart `Retry-After` başlığı vardır. Frontend zaten `res.message`'ı gösterdiği için arayüz tarafında değişiklik gerekmedi.
+
+**Sayaç kural taşımaz.** `RateLimiter.tryConsume(key, maxAttempts, window)` imzasında limit ve süre **parametredir**. Sayaç sayar, politikayı çağıran belirler; bu yüzden sınıf `EmailService` / `JwtService` ile aynı kategoriye — "birden çok yerden çağrılan, iş kuralı taşımayan teknik yardımcı" — girer ve *"ayrı service katmanı yok"* kuralını delmez. Limitler `AuthController` içinde sabit olarak durur (`LOGIN_MAX_ATTEMPTS`, `RATE_LIMIT_WINDOW` …), tıpkı `CartController.MAX_QUANTITY_PER_ITEM` gibi.
+
+**Anahtar uca göre değişir, çünkü kötüye kullanım da değişir.** `login` / `verify` / `resend` için anahtar e-postadır: saldırgan belirli bir hesabı hedefler, ortak nokta o hesaptır. `register` için e-posta anahtarı **işe yaramaz** — kayıt ucu var olan adresi zaten `409` ile reddeder, saldırgan her istekte yeni bir adres kullanır ve her istek ayrı kovaya düşer. Orada ortak nokta kaynak IP'dir. Anahtarlar uç adıyla öneklenir (`"login:ali@x.com"`); önek olmasaydı login denemeleri verify kotasını yer ve kullanıcı neden yasaklandığını anlayamazdı.
+
+**Kontrol metodun ilk satırındadır, `reset` ise sonuç belli olduktan sonra.** `login`'de limit kontrolü veritabanı sorgusundan ve bcrypt karşılaştırmasından **önce** yapılır; bcrypt kasten yavaştır (~100 ms) ve limitin koruduğu şeylerden biri de budur. Şifre doğrulanınca `reset` çağrılır — böylece "yalnızca başarısız denemeler sayılır" davranışı ayrı bir bayrak tutmadan elde edilir. `resend` ve `register`'da `reset` yoktur: orada başarı/başarısızlık ayrımı yok, her istek gerçek bir e-posta gönderiyor ve maliyet zaten oluşmuş oluyor.
+
+> Kontrol neden bir `Filter` içinde değil? Anahtar için istek gövdesindeki e-posta gerekiyor; gövde akışı bir kez okunabilir, filtrede okunursa controller boş gövde görür. Ayrıca `reset` kararı işlemin sonucunu bilmeyi gerektirir, filtre bunu bilemez.
+
+**Sabit pencere (fixed window).** Her anahtar için *(deneme sayısı, pencerenin bitiş anı)* tutulur. İlk deneme pencereyi başlatır, sonrakiler bitiş anını **değiştirmeden** sayıyı artırır. Sonuç: yasaklıyken denemeye devam etmek yasağı uzatmaz, süre dolunca sayaç kendiliğinden sıfırlanır ve ayrı bir zamanlanmış iş gerekmez.
+
+**Tek nesne, çok thread.** `@Service` bileşenleri singleton'dır: uygulamada tek bir `RateLimiter` vardır ve eşzamanlı isteklerin hepsi **aynı** nesnenin metodunu **aynı anda** çalıştırır. Kullanıcıları birbirinden ayıran şey ayrı nesneler değil, haritadaki **anahtarlardır**. Sayaç bir alan (`private int count`) olarak tutulsaydı tek bir sayaç olurdu ve bir kullanıcının hatalı denemeleri herkesi kilitlerdi — singleton bileşenlerin klasik ve sessiz hatası budur.
+
+**Yarış durumu, projedeki üçüncüsü.** Sayacı `get()` ile okuyup `put()` ile yazmak, sepet ve stok bölümlerindeki *kontrol ile davranış arasındaki boşluğun* birebir aynısıdır: aynı anahtara gelen iki eşzamanlı istek aynı sayıyı okur, aynı sayıyı yazar, bir deneme kaybolur ve limit paralel isteklerle delinir. Fark, hakemin kim olduğudur — sepette `UNIQUE` kısıtı, stokta koşullu `UPDATE`, burada `ConcurrentHashMap.compute()`. Üçü de okuma ile yazmayı tek bir atomik işlemde birleştirir.
+
+**Bellek sınırı.** Harita `CLEANUP_THRESHOLD` (1000) girdiyi aştığında süresi dolmuş kayıtlar temizlenir; olmasaydı rastgele anahtarlarla istek atan biri haritayı sınırsız büyütebilirdi. İki ayrıntı önemlidir: temizliği aynı anda yalnızca bir thread üstlensin diye `AtomicBoolean.compareAndSet` ile bayrak kapılır (diğerleri beklemez, doğrudan kendi işine devam eder), ve silme **iki argümanlı** `remove(key, value)` ile yapılır — tarama sırasında yeni bir deneme pencereyi tazelemişse o taze sayaç silinmez.
+
+**Bilinçli sınırlar:** Sayaçlar bellektedir, yani uygulama yeniden başlayınca sıfırlanır ve birden çok kopya çalışıyorsa her kopya kendi sayacını tutar (gerçek limit kopya sayısıyla çarpılır). Dağıtık bir kurulumda buranın yerini Redis benzeri ortak bir sayaç almalıdır. Ayrıca `login` limiti e-posta bazlı olduğu için, adresini bilen biri bir kullanıcıyı 10 dakika boyunca girişten alıkoyabilir; alternatifi olan IP anahtarı ise aynı ağdaki herkesi tek kovaya sokardı.
 
 ---
 
@@ -245,10 +279,10 @@ Erişim sütunu: 🌐 herkese açık · 🔑 giriş gerekir · 👑 `ADMIN` rol�
 
 | Metot | Uç Nokta (Endpoint) | Erişim | Açıklama |
 | :--- | :--- | :---: | :--- |
-| **POST** | `/api/auth/register` | 🌐 | Yeni üyelik oluşturur, doğrulama kodunu e-postaya gönderir. Gövde: `{username, email, password}`. |
-| **POST** | `/api/auth/verify` | 🌐 | E-postadaki kodu doğrular, hesabı aktifleştirir ve JWT döner. Gövde: `{email, code}`. |
-| **POST** | `/api/auth/login` | 🌐 | E-posta + şifre ile giriş, JWT döner. Gövde: `{email, password}`. |
-| **POST** | `/api/auth/resend` | 🌐 | Doğrulama kodunu yeniden gönderir. Gövde: `{email}`. |
+| **POST** | `/api/auth/register` | 🌐 | Yeni üyelik oluşturur, doğrulama kodunu e-postaya gönderir. Gövde: `{username, email, password}`. Aynı IP 10 dakikada 5 kayıttan fazlasını yapamaz (429). |
+| **POST** | `/api/auth/verify` | 🌐 | E-postadaki kodu doğrular, hesabı aktifleştirir ve JWT döner. Gövde: `{email, code}`. 10 dakikada 5 başarısız denemeden sonra 429. |
+| **POST** | `/api/auth/login` | 🌐 | E-posta + şifre ile giriş, JWT döner. Gövde: `{email, password}`. 10 dakikada 5 başarısız denemeden sonra 429. |
+| **POST** | `/api/auth/resend` | 🌐 | Doğrulama kodunu yeniden gönderir. Gövde: `{email}`. 10 dakikada en fazla 3 istek (429). |
 | **GET** | `/api/auth/me` | 🔑 | Token sahibinin bilgisini döner: `{id, username, email, role}`. |
 | **POST** | `/api/auth/change-password` | 🔑 | Şifre değiştirir. Gövde: `{oldPassword, newPassword}`. |
 | **DELETE** | `/api/auth/delete-account` | 🔑 | Hesabı, sepetini ve favorilerini siler. |
@@ -376,18 +410,20 @@ Dürüst kalsın diye not düşülmüştür; henüz **kapatılmamıştır**:
 
 **Güvenlik**
 
-1. **Deneme limiti yok:** `/api/auth/login` ve `/api/auth/verify` sınırsız denenebiliyor; 6 haneli doğrulama kodu 15 dakika boyunca kaba kuvvetle denenebilir.
+1. **Deneme limiti tek sunucuya özeldir:** Sayaçlar uygulama belleğinde tutuluyor. Uygulama yeniden başlayınca sıfırlanıyorlar, birden çok kopya çalıştırılırsa her kopya kendi sayacını tuttuğu için gerçek limit kopya sayısıyla çarpılıyor. Ortak bir sayaç (Redis vb.) gerekir.
+2. **Login limiti kilitlemeye açık:** Anahtar e-posta olduğu için, adresini bilen biri 5 yanlış denemeyle bir kullanıcıyı 10 dakika girişten alıkoyabilir. Bilinen bir takas: IP anahtarı ise aynı ağdaki herkesi tek kovaya sokardı.
 
 **Hata yönetimi / veri bütünlüğü**
 
-2. **Şifre değişince eski token'lar geçerli kalıyor:** JWT'de iptal (revocation) mekanizması yok; şifresini değiştiren kullanıcının önceki token'ı süresi dolana kadar çalışmaya devam eder.
+3. **Şifre değişince eski token'lar geçerli kalıyor:** JWT'de iptal (revocation) mekanizması yok; şifresini değiştiren kullanıcının önceki token'ı süresi dolana kadar çalışmaya devam eder.
 
 **Kod kalitesi**
 
-3. **Test yok:** Yalnızca varsayılan `contextLoads` testi mevcut. Sipariş akışı (sahiplik kontrolü, snapshot, sepetin boşalması, iptal durum geçişleri) test edilmeye en uygun yer.
-4. **Toast kodu üç kez kopyalanmış:** `Header.tsx` içinde favori bildirimi, `loginRequired` ve `cartError` neredeyse aynı inline-style bloğunu tekrar ediyor; tek bir `Toast` bileşenine çıkması gerekir.
+4. **Test yok:** Yalnızca varsayılan `contextLoads` testi mevcut. Sipariş akışı (sahiplik kontrolü, snapshot, sepetin boşalması, iptal durum geçişleri) test edilmeye en uygun yer.
+5. **Toast kodu üç kez kopyalanmış:** `Header.tsx` içinde favori bildirimi, `loginRequired` ve `cartError` neredeyse aynı inline-style bloğunu tekrar ediyor; tek bir `Toast` bileşenine çıkması gerekir.
 
 > **Kapatılanlar:**
+> - Kimlik uçlarına deneme limiti eklendi (`RateLimiter`); `register` / `login` / `verify` / `resend` artık sınırsız denenemiyor, limit aşılınca `429` + `Retry-After` dönüyor (bkz. *Deneme Limiti*). Sayaç genel amaçlı bir teknik yardımcıdır, limitleri `AuthController` belirler. Yol boyunca öğrenilen: kayıt ucunda e-posta anahtarı işe yaramaz — saldırgan her istekte yeni adres kullandığı için limit hiç tetiklenmez; oradaki ortak nokta kaynak IP'dir.
 > - Sepet yarış durumu ele alındı. (Not: bu madde eskiden "`Cart.user` üzerinde unique kısıtı yok, iki sepet oluşabilir" diye yazılmıştı; **yanlıştı**. Hibernate `@OneToOne`'dan kısıtı üretmiş, canlı şemada `cart.user_id` üzerinde `UNIQUE` duruyor. Yani veri bütünlüğü hiç bozulmuyordu; asıl sorun, kısıtın reddettiği ikinci kaydın yakalanmaması ve kullanıcının 500 almasıydı.) Sepet oluşturma tek bir `getOrCreateCart` metoduna toplandı, `DataIntegrityViolationException` yakalanıp yarışı kazanan isteğin sepeti okunuyor.
 > - Sepetteki adet sınırı gerçekten uygulanıyor: sınır `CartController.MAX_QUANTITY_PER_ITEM` sabitinde tek yerde tanımlı, ekleme (POST) **toplam** adede bakıyor ve güncelleme (PUT) ucuna da üst sınır kondu. Reddedilen istekler artık gövdesiz 400 yerine sebep mesajı dönüyor, arayüz de bunu toast olarak gösteriyor.
 > - Kullanılmayan artıklar temizlendi: boş `string.java` sınıfı silindi, `CartController`'daki kullanılmayan `userRepository` enjeksiyonu kaldırıldı, `Header.tsx`'teki `import { title } from "process"` ve `layout.tsx`'teki kullanılmayan `Link` / `styles` import'ları atıldı, varsayılan "Create Next App" metadata'sı proje adıyla değiştirildi ve `<html lang>` `tr` yapıldı.
