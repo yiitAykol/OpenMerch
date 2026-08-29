@@ -54,7 +54,16 @@ export default function AdminOrdersPage() {
           current.map((order) => (order.id === id ? { ...order, status: updated.status } : order))
         );
       } else {
-        alert("Sipariş durumu güncellenemedi.");
+        // 400 gövdesinde sebep var (ör. sipariş zaten iptal edilmiş).
+        // 401/403 gövdesizdir; o yüzden json() bir try içinde.
+        let message = "Sipariş durumu güncellenemedi.";
+        try {
+          const data = await res.json();
+          if (data?.message) message = data.message;
+        } catch {
+          // Gövdesiz yanıt — varsayılan mesajla devam.
+        }
+        alert(message);
       }
     } catch (error) {
       console.error("Durum güncellenirken hata:", error);
@@ -110,7 +119,7 @@ export default function AdminOrdersPage() {
                   <select
                     className={styles.statusSelect}
                     value={order.status}
-                    disabled={savingId === order.id}
+                    disabled={savingId === order.id || order.status === "CANCELLED"}
                     onChange={(e) => handleStatusChange(order.id, e.target.value)}
                   >
                     {ORDER_STATUS_OPTIONS.map((status) => (

@@ -1,6 +1,7 @@
 package com.example.productapi;
 
 import org.springframework.http.ResponseEntity;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -19,9 +20,12 @@ public class AdminOrderController {
             Set.of("NEW", "PREPARING", "SHIPPED", "DELIVERED", "CANCELLED");
 
     private final OrderRepository orderRepository;
+    private final ProductRepository productRepository;
+    private static final String CANCELLED = "CANCELLED";
 
-    public AdminOrderController(OrderRepository orderRepository) {
+    public AdminOrderController(OrderRepository orderRepository, ProductRepository productRepository) {
         this.orderRepository = orderRepository;
+        this.productRepository = productRepository;
     }
 
     // Tüm siparişler, en yenisi üstte.
@@ -35,6 +39,7 @@ public class AdminOrderController {
     }
 
     // Sipariş durumunu günceller (Hazırlanıyor, Kargoya Verildi, ...).
+    @Transactional
     @PutMapping("/{id}/status")
     public ResponseEntity<?> updateStatus(@PathVariable Long id, @RequestBody StatusRequest req) {
         String status = req.status == null ? "" : req.status.trim().toUpperCase();
@@ -45,6 +50,21 @@ public class AdminOrderController {
         Order order = orderRepository.findById(id).orElse(null);
         if (order == null) {
             return ResponseEntity.notFound().build();
+        }
+
+        if (CANCELLED.equals(order.getStatus())) {
+            return ResponseEntity.badRequest().body(Map.of("message", "Sipariş zaten iptal edildi."));
+        }
+
+        if(CANCELLED.equals(status))
+        {
+            for (OrderItem item : order.getItems()) {
+                // productId FK değildir; ürün silinmiş olabilir. O zaman sorgu 0 satır
+                // etkiler ve bu normaldir — geri eklenecek bir stok kalmamıştır.
+                if (item.getProductId() != null) {
+                    productRepository.increaseStock(item.getProductId(), item.getQuantity());
+                }
+            }    
         }
 
         order.setStatus(status);
