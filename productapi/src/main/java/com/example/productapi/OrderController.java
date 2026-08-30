@@ -6,6 +6,9 @@ import org.springframework.security.core.Authentication;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
+
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -58,9 +61,13 @@ public class OrderController {
 
     // Checkout formundan gelen teslimat/fatura bilgileri.
     public static class CheckoutRequest {
+        @NotBlank(message = "Ad soyad zorunludur.")
         public String fullName;
+        @NotBlank(message = "Adres zorunludur.")
         public String address;
+        @NotBlank(message = "Şehir zorunludur.")
         public String city;
+        @NotBlank(message = "Telefon zorunludur.")
         public String phone;
         public String note;
         public Boolean invoiceRequired;
@@ -77,18 +84,15 @@ public class OrderController {
     // yarım durumlar kalırdı.
     @PostMapping
     @Transactional
-    public ResponseEntity<?> checkout(Authentication authentication, @RequestBody CheckoutRequest req) {
+    public ResponseEntity<?> checkout(Authentication authentication, @Valid @RequestBody CheckoutRequest req) {
         // 1) Kimlik
         if (authentication == null || !(authentication.getPrincipal() instanceof User user)) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
 
-        // 2) Teslimat bilgileri zorunlu
-        if (isBlank(req.fullName) || isBlank(req.address) || isBlank(req.city) || isBlank(req.phone)) {
-            return ResponseEntity.badRequest().body(Map.of(
-                    "message", "Ad soyad, adres, şehir ve telefon zorunludur."));
-        }
-
+        // 2) Fatura kuralı elle kalır: Bean Validation tek bir alanın kendi başına
+        //    geçerliliğini sorar, alanlar arası bağımlılığı ("fatura isteniyorsa
+        //    başlık zorunlu") ifade edemez. Teslimat alanları ise DTO'da işaretli.
         boolean invoiceRequired = Boolean.TRUE.equals(req.invoiceRequired);
         if (invoiceRequired && (isBlank(req.invoiceTitle) || isBlank(req.taxId))) {
             return ResponseEntity.badRequest().body(Map.of(

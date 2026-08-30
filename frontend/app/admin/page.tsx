@@ -14,17 +14,26 @@ type Product = {
   stock: number;
 };
 
+const PAGE_SIZE = 10;
+
 export default function AdminPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  // Sayfa numarası backend ile aynı dilde: 0 tabanlı.
+  const [page, setPage] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
+  const [totalElements, setTotalElements] = useState(0);
   const apiFetch = useApi();
 
-  const fetchProducts = async () => {
+  const fetchProducts = async (pageToLoad: number) => {
     try {
-      const res = await apiFetch("/api/products");
+      const res = await apiFetch(`/api/products?page=${pageToLoad}&size=${PAGE_SIZE}`);
       if (res.ok) {
+        // Yanıt artık düz dizi değil: { content: [...], page: {...} }
         const data = await res.json();
-        setProducts(data);
+        setProducts(data.content);
+        setTotalPages(data.page.totalPages);
+        setTotalElements(data.page.totalElements);
       }
     } catch (error) {
       console.error("Ürünler getirilirken hata:", error);
@@ -34,8 +43,8 @@ export default function AdminPage() {
   };
 
   useEffect(() => {
-    fetchProducts();
-  }, []);
+    fetchProducts(page);
+  }, [page]);
 
   const handleDelete = async (id: number) => {
     if (!window.confirm("Bu ürünü silmek istediğinize emin misiniz?")) {
@@ -48,7 +57,14 @@ export default function AdminPage() {
       });
 
       if (res.ok) {
-        setProducts(products.filter(p => p.id !== id));
+        // Listeden elle çıkarmak yetmez: toplam sayı ve sayfa bölümlemesi
+        // sunucuda tutuluyor. Sayfanın son ürünü silindiyse bir önceki sayfaya
+        // düşüyoruz, aksi halde boş bir tablo kalırdı.
+        if (products.length === 1 && page > 0) {
+          setPage(page - 1);
+        } else {
+          fetchProducts(page);
+        }
       } else {
         alert("Silme işlemi başarısız oldu.");
       }
@@ -149,6 +165,53 @@ export default function AdminPage() {
           )}
         </tbody>
       </table>
+
+      {totalPages > 1 && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: "0.5rem",
+            marginTop: "1.5rem",
+            flexWrap: "wrap",
+          }}
+        >
+          <button
+            onClick={() => setPage(page - 1)}
+            disabled={page === 0}
+            className={styles.editBtn}
+          >
+            ←
+          </button>
+
+          {Array.from({ length: totalPages }, (_, i) => (
+            <button
+              key={i}
+              onClick={() => setPage(i)}
+              className={styles.editBtn}
+              style={{
+                fontWeight: i === page ? 700 : 400,
+                opacity: i === page ? 1 : 0.6,
+              }}
+            >
+              {i + 1}
+            </button>
+          ))}
+
+          <button
+            onClick={() => setPage(page + 1)}
+            disabled={page >= totalPages - 1}
+            className={styles.editBtn}
+          >
+            →
+          </button>
+
+          <span style={{ marginLeft: "0.75rem", color: "#6c757d", fontSize: "0.9rem" }}>
+            {totalElements} ürün
+          </span>
+        </div>
+      )}
     </div>
   );
 }

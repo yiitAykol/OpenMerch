@@ -6,6 +6,8 @@ import { useApi } from "@/app/lib/useApi";
 // importlar buraya (useState, useEffect)
 import styles from "./page.module.scss";
 const tabColors = ["#e4ddddff", "#d5e3eeff", "#e3ece4ff", "#f0ebe4ff", "#e1cdefff", "#d5e9e8ff"];
+// Bir sayfada gösterilecek ürün sayısı. Backend'in varsayılanı da 12.
+const PAGE_SIZE = 12;
 
 export default function Home() {
   // state buraya
@@ -22,6 +24,11 @@ export default function Home() {
   const [currentSlide, setCurrentSlide] = useState(0);
   // products state'inin altına ekle
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
+  // Sayfalama durumu. Sayfa numarası backend ile aynı dilde: 0 tabanlı.
+  const [page, setPage] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
+  const [totalElements, setTotalElements] = useState(0);
+  const [isLoadingProducts, setIsLoadingProducts] = useState(true);
 
   // Tab çubuğunu okla kaydırmak için referans
   const tabBarRef = useRef<HTMLDivElement>(null);
@@ -70,21 +77,42 @@ export default function Home() {
     }
   };
 
-  // Seçili kategoriye göre filtrele
-  const filteredProducts =
-    selectedCategory === "all"
-      ? products
-      : products.filter((p) => p.category === selectedCategory);
+  // Ürünlerin bir sayfasını çeker. append=true ise mevcut listenin altına ekler
+  // ("Daha fazla göster"), false ise listeyi baştan kurar (kategori değişimi).
+  //
+  // Kategori filtresi artık sunucuda: liste sayfalı olduğu için tarayıcı
+  // ürünlerin tamamını görmüyor, burada filtrelemek yanlış sonuç verirdi.
+  const loadProducts = async (pageToLoad: number, category: string, append: boolean) => {
+    setIsLoadingProducts(true);
+    try {
+      const params = new URLSearchParams({
+        page: String(pageToLoad),
+        size: String(PAGE_SIZE),
+      });
+      if (category !== "all") params.set("category", category);
 
-  // Ürün / kategori / banner herkese açık — bir kez yüklenir.
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/products?${params}`);
+      if (!res.ok) return;
+
+      const data = await res.json();
+      setProducts((current) => (append ? [...current, ...data.content] : data.content));
+      setPage(data.page.number);
+      setTotalPages(data.page.totalPages);
+      setTotalElements(data.page.totalElements);
+    } catch (error) {
+      console.error("Ürünler getirilirken hata:", error);
+    } finally {
+      setIsLoadingProducts(false);
+    }
+  };
+
+  // Kategori / banner herkese açık — bir kez yüklenir.
   useEffect(() => {
     async function load() {
-      const [productsRes, categoriesRes, bannersRes] = await Promise.all([
-        fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/products`),
+      const [categoriesRes, bannersRes] = await Promise.all([
         fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/categories`),
         fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/banners`),
       ]);
-      setProducts(await productsRes.json());
       const categoryData = await categoriesRes.json();
       // Backend {id, name} döndürüyor; sadece isimleri alıyoruz
       setCategories(categoryData.map((c: { name: string }) => c.name));
@@ -92,6 +120,11 @@ export default function Home() {
     }
     load();
   }, []);
+
+  // Kategori değiştiğinde ilk sayfadan başla ve listeyi sıfırla.
+  useEffect(() => {
+    loadProducts(0, selectedCategory, false);
+  }, [selectedCategory]);
 
   // Favoriler kullanıcıya özel — giriş/çıkışta yıldızları güncelle.
   useEffect(() => {
@@ -217,10 +250,35 @@ export default function Home() {
       )}
 
       <div className={styles.grid}>
-        {filteredProducts.map((product) => (
+        {products.map((product) => (
           <ProductCard key={product.id} product={product} favoriteId={favMap[product.id] ?? null} />
         ))}
       </div>
+
+      {/* Sayfalama: vitrinde sayfa numarası yerine "daha fazla" — akış bölünmesin.
+          Son sayfadaysak buton hiç gösterilmez. */}
+      {page < totalPages - 1 && (
+        <div style={{ textAlign: "center", margin: "2rem 0 3rem" }}>
+          <button
+            onClick={() => loadProducts(page + 1, selectedCategory, true)}
+            disabled={isLoadingProducts}
+            style={{
+              padding: "0.75rem 2rem",
+              borderRadius: "999px",
+              border: "1px solid #d1d5db",
+              background: "#fff",
+              cursor: isLoadingProducts ? "default" : "pointer",
+              fontSize: "0.95rem",
+              opacity: isLoadingProducts ? 0.6 : 1,
+            }}
+          >
+            {isLoadingProducts ? "Yükleniyor..." : "Daha fazla göster"}
+          </button>
+          <div style={{ marginTop: "0.75rem", color: "#6b7280", fontSize: "0.85rem" }}>
+            {totalElements} üründen {products.length} tanesi gösteriliyor
+          </div>
+        </div>
+      )}
     </>
   );
 }

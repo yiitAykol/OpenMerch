@@ -10,6 +10,8 @@ Bu doküman, Spring Boot ve Next.js kullanılarak geliştirilen "StackBootProjec
 - **Veri Erişim:** Spring Data JPA (Hibernate)
 - **Mimari:** RESTful API — `Controller` → `Repository` → `Entity`. **Ayrı bir service katmanı yoktur:** iş mantığı controller'ların içindedir. `EmailService`, `JwtService` ve `RateLimiter` bu kuralın istisnasıdır; üçü de birden fazla yerden çağrılan teknik yardımcılardır, iş kuralı taşımazlar.
 - **Veri Tipleri:** Finansal hesaplamalar için `BigDecimal` kullanımı.
+- **Girdi Doğrulama:** Jakarta Bean Validation (`@NotBlank`, `@Email`, `@Size` …). Reddedilen istekler `GlobalExceptionHandler` (`@RestControllerAdvice`) tarafından projenin ortak `{"message": "..."}` biçimine çevrilir (bkz. *Girdi Doğrulama*).
+- **Listeleme:** `GET /api/products` sayfalıdır (`Pageable` + `PagedModel`); kategori filtresi de sunucu tarafındadır (bkz. *Sayfalama*).
 - **Güvenlik / Kimlik Doğrulama:** Spring Security, JWT (jjwt), şifreler için BCrypt hash.
 - **Yetkilendirme:** Rol tabanlı (`USER` / `ADMIN`). Rol kullanıcı kaydında tutulur, her istekte veritabanından okunur.
 - **E-posta:** Spring Mail (Gmail SMTP) ile doğrulama kodu gönderimi.
@@ -35,9 +37,9 @@ Bu doküman, Spring Boot ve Next.js kullanılarak geliştirilen "StackBootProjec
    - **Güvenlik:** REST API stateless çalışır (sunucuda session yok). Vitrin uç noktaları (ürün/kategori/banner **okuma**) herkese açıktır; sepet, favoriler ve hesap işlemleri geçerli JWT ister; yazma işlemleri `ADMIN` rolü ister.
    - **Deneme Limiti:** Kayıt, giriş, doğrulama ve kod tekrar gönderme uçları sınırsız denenemez; limit aşılınca `429 Too Many Requests` döner (bkz. *Deneme Limiti*).
 
-1. **Ürün Listeleme (Product Listing)**
-   - Backend'den çekilen ürünlerin (`ProductCard` bileşeni ile) grid şeklinde ana sayfada gösterilmesi.
-   - **Kategori Sekmeleri:** Ana sayfada kategoriler yatay sekme çubuğu olarak listelenir, seçilen kategoriye göre ürünler filtrelenir. Sekme çubuğu ok tuşlarıyla kaydırılabilir.
+1. **Ürün Listeleme (Product Listing) - *[GÜNCELLENDİ]* **
+   - Backend'den çekilen ürünlerin (`ProductCard` bileşeni ile) grid şeklinde ana sayfada gösterilmesi. Liste **sayfalıdır**: bir seferde 12 ürün gelir, altta "Daha fazla göster" düğmesi sonraki sayfayı mevcut listenin altına ekler (bkz. *Sayfalama*).
+   - **Kategori Sekmeleri:** Ana sayfada kategoriler yatay sekme çubuğu olarak listelenir, seçilen kategoriye göre ürünler filtrelenir. Sekme çubuğu ok tuşlarıyla kaydırılabilir. Filtreleme **sunucu tarafındadır** (`?category=...`) — tarayıcı listenin tamamını görmediği için orada filtrelemek yanlış sonuç verirdi.
    - **Banner Slider'ı:** Yönetici tarafından eklenen banner'lar ana sayfada 4 saniyede bir otomatik dönen slider'da gösterilir.
    - **Ürün Detay Sayfası (`/products/{id}`):** Görsel, kategori, fiyat, açıklama; sepete ekle ve favori aç/kapa butonları.
    - **Stok Göstergesi:** Ürün kartında stok bittiyse görselin üstünde "Tükendi" şeridi belirir ve sepete ekle butonu pasifleşir; 5 ve altındaki stokta fiyatın altında "Son N ürün!" uyarısı çıkar. Detay sayfasında durum üç halde gösterilir: "Stokta var" / "Son N ürün!" / "Tükendi".
@@ -79,7 +81,7 @@ Bu doküman, Spring Boot ve Next.js kullanılarak geliştirilen "StackBootProjec
 
 5. **Yönetim Paneli (Admin Panel) - *[GÜNCELLENDİ]* **
    - **Erişim:** Yalnızca `role = ADMIN` olan kullanıcılar. `/admin` altındaki tüm sayfalar `app/admin/layout.tsx` ile korunur: giriş yoksa `/login`'e, rol yetersizse ana sayfaya yönlendirilir.
-   - **Ürün Yönetimi (`/admin`):** Ürün listesi tablosu; ekleme (`/admin/add`), düzenleme (`/admin/edit/{id}`) ve silme. Ürün silinirken o ürüne ait sepet kalemleri ve favoriler de temizlenir (foreign key hatası olmaması için). Listede **Stok** kolonu vardır: tükenmiş ürün kırmızı "Tükendi", 5 ve altı turuncu, gerisi yeşil gösterilir. Ekleme ve düzenleme formlarında stok adedi alanı bulunur.
+   - **Ürün Yönetimi (`/admin`):** Ürün listesi tablosu; ekleme (`/admin/add`), düzenleme (`/admin/edit/{id}`) ve silme. Ürün silinirken o ürüne ait sepet kalemleri ve favoriler de temizlenir (foreign key hatası olmaması için). Listede **Stok** kolonu vardır: tükenmiş ürün kırmızı "Tükendi", 5 ve altı turuncu, gerisi yeşil gösterilir. Ekleme ve düzenleme formlarında stok adedi alanı bulunur. Tablo sayfa numaralarıyla gezilir (sayfa başına 10 ürün) ve toplam ürün sayısı gösterilir; silme sonrası liste sunucudan yeniden çekilir (bkz. *Sayfalama*).
      - **Dikkat:** `ProductController.updateProduct` alanları tek tek kopyalar. `setStock` satırı unutulursa **her düzenlemede stok sessizce sıfırlanır** ve ürün satılamaz hale gelir — sebebi de kolay anlaşılmaz. Yeni bir alan eklendiğinde bu metot da güncellenmelidir.
    - **Kategori Yönetimi (`/admin/categories`):** Kategori ekleme ve silme. Aynı isimde ikinci kategori eklenemez.
    - **Banner Yönetimi (`/admin/banners`):** Ana sayfa slider'ına banner ekleme/silme, URL girilirken canlı önizleme.
@@ -139,6 +141,29 @@ Dikkat edilecek iki nokta:
 - **`.equals()` kullanılır, `==` değil.** `getId()` bir `Long` nesnesi döndürür; `==` referans karşılaştırır. Java `-128..127` aralığındaki `Long` değerlerini önbelleklediği için `==` küçük id'lerde çalışıyormuş gibi görünür, id'ler büyüyünce sessizce bozulur.
 - **Yanıt, isteği yapanın verisiyle kurulur.** Örneğin `cartRepository.findByUserId(user.getId())` — `item.getCart().getUser().getId()` değil. Sahiplik kontrolünden sonra ikisi aynıdır, ancak ilki niyeti açık kılar ve kontrol ileride kaldırılsa bile başkasının verisini sızdırmaz.
 
+### CORS: tarayıcının ayrı kapısı
+
+Yukarıdaki kuralların hepsi **sunucu** tarafındadır. Bir de tarayıcının kendi koyduğu, sunucudan bağımsız bir kapı vardır ve bu projede sürekli devrededir: frontend `http://localhost:3000`, backend `http://localhost:8080` üzerinde çalışır — **port farklı olduğu için bunlar farklı origin'dir.**
+
+Tarayıcının **Same-Origin Policy** kuralı gereği, bir sayfa başka bir origin'e attığı isteğin **yanıtını** varsayılan olarak okuyamaz. Kural şunun içindir: bankanda girişliyken açtığın kötü niyetli bir site `fetch("https://banka.com/api/hesaplarim")` çağırıp yanıtı okuyabilseydi, çerezlerin otomatik gideceği için bakiyeni görürdü.
+
+**CORS** (Cross-Origin Resource Sharing) bu kuralın kontrollü istisnasıdır ve kritik nokta şudur: izni **frontend değil backend verir.** Sunucu yanıtına `Access-Control-Allow-Origin` başlığını koyar, tarayıcı da yanıtı sayfaya teslim eder. `PUT` / `DELETE` gibi metotlarda tarayıcı önce bir **preflight** (`OPTIONS`) isteğiyle izin sorar — `CorsConfig`'te `OPTIONS`'ın listede olmasının sebebi budur.
+
+`CorsConfig` tek CORS kaynağıdır; `SecurityConfig` içindeki `.cors(Customizer.withDefaults())` bu bean'i bulup zincire takar.
+
+| Ayar | Değer | Neden |
+| :--- | :--- | :--- |
+| `allowedOrigins` | `app.cors.allowed-origins` (varsayılan `http://localhost:3000`) | Frontend'in adresi. `CORS_ORIGINS` ortam değişkeniyle geçilebilir; virgülle birden çok origin verilebilir (`@Value` bir `List<String>` alanına okur, ayırma işini Spring yapar). |
+| `allowedMethods` | `GET, POST, PUT, DELETE, OPTIONS` | `OPTIONS` preflight için şart. |
+| `allowedHeaders` | `*` | **`Authorization` başlığı bu sayede geçer.** Bu satır olmasaydı JWT gönderilemez, korumalı isteklerin tamamı patlardı. |
+| `allowCredentials` | **açılmadı** | Aşağıya bakınız. |
+
+**`allowCredentials` neden kapalı?** CORS'ta "credentials" dar bir teknik anlam taşır: **çerezler**, HTTP Basic auth ve TLS istemci sertifikaları. Ortak özellikleri, tarayıcının bunları **kod istemeden kendiliğinden eklemesidir**. `Authorization: Bearer ...` bu kapsamda **değildir** — onu `useApi` elle ekler, dolayısıyla `allowedHeaders` ile yönetilir. Bu projede hiç çerez yoktur (JWT `localStorage`'da durur) ve frontend hiçbir yerde `credentials: "include"` demez; yani `allowCredentials(true)` kimsenin sormadığı bir soruya cevap veriyordu. Kapalı olması ayrıca `CORS_ORIGINS=*` seçeneğini mümkün kılar: spec, `Access-Control-Allow-Origin: *` ile credentials'ı **birlikte yasaklar** (Spring `IllegalArgumentException` atar), çünkü `*` sunucunun kime güvendiğini bilinçli olarak beyan etmediği anlamına gelir.
+
+> İleride çerez tabanlı bir refresh token eklenirse `allowCredentials` geri açılmalı — ve o gün `*` seçeneği kapanır.
+
+**Teşhisi zor olan hâli:** Frontend'i başka bir portta ya da bir sunucuda çalıştırırsan, backend hiçbir hata **loglamaz**; istek sunucuya ulaşır, işlenir, yanıt döner — yanıtı sayfaya vermeyen taraf tarayıcıdır. Belirti yalnızca tarayıcı konsolundaki bir CORS uyarısı ve boş görünen bir arayüzdür. `NEXT_PUBLIC_API_URL` tuzağının ikizidir; çözümü `CORS_ORIGINS`'i yeni adrese ayarlamaktır.
+
 ---
 
 ## 🚦 Deneme Limiti (Rate Limiting)
@@ -158,7 +183,7 @@ Limit aşılınca `429 Too Many Requests` döner; yanıtta hem açıklayıcı bi
 
 **Anahtar uca göre değişir, çünkü kötüye kullanım da değişir.** `login` / `verify` / `resend` için anahtar e-postadır: saldırgan belirli bir hesabı hedefler, ortak nokta o hesaptır. `register` için e-posta anahtarı **işe yaramaz** — kayıt ucu var olan adresi zaten `409` ile reddeder, saldırgan her istekte yeni bir adres kullanır ve her istek ayrı kovaya düşer. Orada ortak nokta kaynak IP'dir. Anahtarlar uç adıyla öneklenir (`"login:ali@x.com"`); önek olmasaydı login denemeleri verify kotasını yer ve kullanıcı neden yasaklandığını anlayamazdı.
 
-**Kontrol metodun ilk satırındadır, `reset` ise sonuç belli olduktan sonra.** `login`'de limit kontrolü veritabanı sorgusundan ve bcrypt karşılaştırmasından **önce** yapılır; bcrypt kasten yavaştır (~100 ms) ve limitin koruduğu şeylerden biri de budur. Şifre doğrulanınca `reset` çağrılır — böylece "yalnızca başarısız denemeler sayılır" davranışı ayrı bir bayrak tutmadan elde edilir. `resend` ve `register`'da `reset` yoktur: orada başarı/başarısızlık ayrımı yok, her istek gerçek bir e-posta gönderiyor ve maliyet zaten oluşmuş oluyor.
+**Kontrol metot gövdesinin ilk satırındadır, `reset` ise sonuç belli olduktan sonra.** (Gövdeden de önce `@Valid` çalışır; bkz. *Girdi Doğrulama*.) `login`'de limit kontrolü veritabanı sorgusundan ve bcrypt karşılaştırmasından **önce** yapılır; bcrypt kasten yavaştır (~100 ms) ve limitin koruduğu şeylerden biri de budur. Şifre doğrulanınca `reset` çağrılır — böylece "yalnızca başarısız denemeler sayılır" davranışı ayrı bir bayrak tutmadan elde edilir. `resend` ve `register`'da `reset` yoktur: orada başarı/başarısızlık ayrımı yok, her istek gerçek bir e-posta gönderiyor ve maliyet zaten oluşmuş oluyor.
 
 > Kontrol neden bir `Filter` içinde değil? Anahtar için istek gövdesindeki e-posta gerekiyor; gövde akışı bir kez okunabilir, filtrede okunursa controller boş gövde görür. Ayrıca `reset` kararı işlemin sonucunu bilmeyi gerektirir, filtre bunu bilemez.
 
@@ -171,6 +196,126 @@ Limit aşılınca `429 Too Many Requests` döner; yanıtta hem açıklayıcı bi
 **Bellek sınırı.** Harita `CLEANUP_THRESHOLD` (1000) girdiyi aştığında süresi dolmuş kayıtlar temizlenir; olmasaydı rastgele anahtarlarla istek atan biri haritayı sınırsız büyütebilirdi. İki ayrıntı önemlidir: temizliği aynı anda yalnızca bir thread üstlensin diye `AtomicBoolean.compareAndSet` ile bayrak kapılır (diğerleri beklemez, doğrudan kendi işine devam eder), ve silme **iki argümanlı** `remove(key, value)` ile yapılır — tarama sırasında yeni bir deneme pencereyi tazelemişse o taze sayaç silinmez.
 
 **Bilinçli sınırlar:** Sayaçlar bellektedir, yani uygulama yeniden başlayınca sıfırlanır ve birden çok kopya çalışıyorsa her kopya kendi sayacını tutar (gerçek limit kopya sayısıyla çarpılır). Dağıtık bir kurulumda buranın yerini Redis benzeri ortak bir sayaç almalıdır. Ayrıca `login` limiti e-posta bazlı olduğu için, adresini bilen biri bir kullanıcıyı 10 dakika boyunca girişten alıkoyabilir; alternatifi olan IP anahtarı ise aynı ağdaki herkesi tek kovaya sokardı.
+
+---
+
+## 📄 Sayfalama (Pagination)
+
+`GET /api/products` eskiden `repository.findAll()` ile **tüm tabloyu** her istekte döndürüyordu. Katalog büyüdükçe bu, hem veritabanı hem ağ hem de tarayıcı tarafında doğrusal olarak pahalılaşan bir uçtur. Artık sayfalıdır:
+
+```
+GET /api/products?page=0&size=12&category=Ayakkabı
+```
+
+```java
+@GetMapping
+public PagedModel<Product> getAllProducts(
+        @RequestParam(required = false) String category,
+        @PageableDefault(size = 12, sort = "id") Pageable pageable) {
+
+    Page<Product> page = (category == null || category.isBlank())
+            ? repository.findAll(pageable)
+            : repository.findByCategory(category, pageable);
+
+    return new PagedModel<>(page);
+}
+```
+
+`Pageable` nesnesini controller doldurmaz; Spring, URL'deki `page` / `size` / `sort` değerlerini okuyup kendisi kurar — `Authentication` parametresinin çalıştığı mekanizmanın aynısı. `findByCategory` da gövdesizdir, sorgu metot adından türetilir.
+
+**Yanıt biçimi (`PagedModel`):**
+
+```json
+{
+  "content": [ { "id": 1, "name": "...", "price": 100, "stock": 5 } ],
+  "page": { "size": 12, "number": 0, "totalElements": 57, "totalPages": 5 }
+}
+```
+
+Controller'dan doğrudan `Page` döndürmek de derlenir, ama Spring Data 3.3'ten beri `PageImpl`'in JSON'u **kararsız** sayılır ve alan isimleri sürümler arası değişebilir. `new PagedModel<>(page)` sözleşmeyi sabitler.
+
+Dört tasarım kararı:
+
+- **`sort = "id"` şart, süs değil.** Sıralamasız sayfalamada veritabanı satırların hangi sırayla geleceğini garanti etmez: 2. sayfada 1. sayfadaki ürün tekrar görünebilir, başka bir ürün hiç görünmeyebilir. Hata sinsi olur — liste "çoğunlukla doğru" çalışır.
+- **`size` üst sınırlıdır** (`spring.data.web.pageable.max-page-size=100`). Olmasaydı `?size=999999` ilk günkü sorunu geri getirirdi; sayfalama eklemiş ama sınırsız listeyi bir parametre arkasına saklamış olurduk.
+- **Kategori filtresi sunucuya taşındı.** Zorunluydu: tarayıcı artık ürünlerin tamamını görmediği için orada filtrelemek yanlış sonuç verirdi ("Ayakkabı" seçtiğinde yalnızca ilk 12 ürünün içindeki ayakkabılar çıkardı).
+- **Sayfasız ikinci bir uç bırakılmadı.** Geriye uyumluluk için `/api/products/all` gibi bir kapı açmak sorunu çözmez, yalnızca taşır.
+
+### Arayüz tarafı: iki ekran, iki desen
+
+| Ekran | Desen | Neden |
+| :--- | :--- | :--- |
+| Ana sayfa (`/`) | **"Daha fazla göster"** — yeni sayfa mevcut listenin altına eklenir | Vitrinde akış bölünmemeli; kullanıcı ürünlere bakarken sayfa değiştirmek istemez |
+| Admin (`/admin`) | **Sayfa numaraları** — her tıklamada liste tamamen değişir | Tabloda "kaç ürün var, kaçıncı sayfadayım, şu sayfaya dönebilir miyim" soruları önemlidir |
+
+İki dikkat noktası:
+
+- **Kategori değişince liste sıfırlanır** (`append = false`), aksi halde eski kategorinin ürünleri yenilerin üstünde kalırdı.
+- **Admin'de silme sonrası liste yeniden çekilir.** Kalemi state'ten elle çıkarmak yetmez: toplam sayı ve sayfa bölümlemesi sunucuda hesaplanır. Sayfadaki son ürün silindiyse bir önceki sayfaya düşülür, yoksa kullanıcı boş bir tabloya bakar.
+- `admin/edit/[id]` sayfası **tek ürün ucunu** kullanır. Eskiden tüm listeyi indirip `.find()` ile arıyordu; bu sayfalamadan bağımsız olarak da yanlıştı (bir ürünü düzenlemek için 500 ürün indirmek), sayfalamayla birlikte ise tamamen çalışmaz hale gelirdi.
+
+---
+
+## ✅ Girdi Doğrulama (Bean Validation)
+
+İstek gövdeleri **Jakarta Bean Validation** ile doğrulanır. Kurallar DTO alanlarının üzerinde anotasyon olarak durur, controller gövdesinde `if` olarak değil.
+
+```java
+public static class RegisterRequest {
+    @NotBlank(message = "Kullanıcı adı boş olamaz")
+    public String username;
+    @NotBlank(message = "E-posta boş olamaz")
+    @Email(message = "E-posta formatı geçersiz")
+    public String email;
+    @NotBlank(message = "Şifre boş olamaz")
+    @Size(min = 6, message = "Şifre en az 6 karakter olmalıdır")
+    public String password;
+}
+```
+
+**Anotasyon tek başına çalışmaz.** Kuralı *çalıştıran* şey, controller parametresindeki `@Valid`'dir (`register(@Valid @RequestBody RegisterRequest req)`). Unutulursa hiçbir hata alınmaz, doğrulama sessizce devre dışı kalır — bu mekanizmanın en sık yapılan hatasıdır. (`Valid` sınıfı `jakarta.validation` paketindedir; kısıtlar `jakarta.validation.constraints` altındadır — `import ...constraints.*` `Valid`'i kapsamaz.)
+
+**Metin alanlarında `@NotBlank` kullanılır:**
+
+| | `null` | `""` | `"   "` |
+| :--- | :---: | :---: | :---: |
+| `@NotNull` | ✗ | geçer | geçer |
+| `@NotEmpty` | ✗ | ✗ | geçer |
+| `@NotBlank` | ✗ | ✗ | ✗ |
+
+`@Size(min = 6)` **tek başına `null`'ı reddetmez** ("değer yoksa uzunluk kuralı da yok"), bu yüzden `@NotBlank` ile birlikte yazılır.
+
+### Hata mesajı arayüze nasıl ulaşır
+
+`@Valid` bir alanı reddederse Spring `MethodArgumentNotValidException` fırlatır ve **varsayılan olarak** `{"timestamp", "status", "error", "path"}` biçiminde bir 400 döner — içinde `message` **yoktur** (`server.error.include-message=never`). Frontend'in tamamı `data.message` okuduğu için, doğrulama eklemek hata mesajlarını olduğu gibi bırakırsa aslında **kötüleştirir**.
+
+`GlobalExceptionHandler` (`@RestControllerAdvice`) bu istisnayı yakalayıp projenin geri kalanıyla aynı biçime çevirir:
+
+```java
+String message = ex.getBindingResult().getFieldErrors().stream()
+        .map(FieldError::getDefaultMessage)
+        .collect(Collectors.joining(" "));
+return ResponseEntity.badRequest().body(Map.of("message", message));
+```
+
+`@RestControllerAdvice` **tüm** controller'lar için geçerlidir; `@ExceptionHandler` bir controller'ın içine yazılsaydı yalnızca orayı kapsardı (`OrderController.handleInsufficientStock` bilinçli olarak öyledir — o kural yalnızca sipariş akışına aittir). Eşleşme istisna **tipine** göre yapıldığı için ikisi çakışmaz.
+
+### Neyin anotasyona taşınmadığı, ve nedeni
+
+Bean Validation **tek bir alanın kendi başına geçerliliğini** sorar. Şunları soramaz, dolayısıyla bu kurallar elle yazılmış kontrol olarak kalır:
+
+| Kural | Nerede | Neden anotasyon değil |
+| :--- | :--- | :--- |
+| "Fatura isteniyorsa başlık ve vergi no zorunlu" | `OrderController.checkout` | **Alanlar arası bağımlılık.** Kural iki alana birden bakar. |
+| "Adet 1 ile `MAX_QUANTITY_PER_ITEM` arasında" | `CartController` | Sınır bir sabitte tek yerde duruyor ve mesaj o sabitten kuruluyor. `@Max` ile sayıyı bir de mesaj metnine yazmak gerekirdi; iki kopya zamanla ayrışır. Ayrıca asıl kural **mevcut + gelen** adet üzerinden işler. |
+| "Durum tanımlı bir değer mi" | `AdminOrderController.ALLOWED_STATUSES` | Kümenin kendisi kuralı taşır. DTO'da yalnızca `@NotBlank` vardır. |
+
+İki alan da **bilinçli olarak boş bırakılmıştır** ve sebebi koda yorum olarak yazılıdır:
+
+- **`LoginRequest.password`'e `@Size` yoktur.** Giriş ucunda uzunluk kuralı, şifre politikasını sızdırır ve `login`'in bilinçli olarak genel tuttuğu "E-posta veya şifre hatalı." mesajını deler. Aynı alan, farklı uç, farklı kural: format kuralı **kayıt** ucunda durur.
+- **`VerifyRequest.code`'a `@Pattern`/`@Size` yoktur.** Kıyaslama `req.code.trim()` ile yapılır; kullanıcı kodu boşluklu yapıştırsa bile çalışır. `@Pattern("\\d{6}")` bu toleransı sessizce kaldırırdı.
+
+> **Sıralama notu:** `@Valid` metot gövdesinden **önce** çalışır, yani deneme limiti kontrolünden de önce. Güvenlik açısından bir kayıp yoktur — geçersiz gövdeler zaten DB sorgusuna ve bcrypt'e ulaşmıyordu — ama sonuç olarak biçimsel olarak bozuk istekler artık limit sayacını **tüketmez**.
 
 ---
 
@@ -290,7 +435,8 @@ Erişim sütunu: 🌐 herkese açık · 🔑 giriş gerekir · 👑 `ADMIN` rol�
 | **GET** | `/api/auth/me` | 🔑 | Token sahibinin bilgisini döner: `{id, username, email, role}`. |
 | **POST** | `/api/auth/change-password` | 🔑 | Şifre değiştirir. Gövde: `{oldPassword, newPassword}`. |
 | **DELETE** | `/api/auth/delete-account` | 🔑 | Hesabı, sepetini ve favorilerini siler. |
-| **GET** | `/api/products` · `/api/products/{id}` | 🌐 | Ürünleri / tek ürünü listeler. |
+| **GET** | `/api/products` | 🌐 | Ürünleri **sayfalı** listeler. Parametreler: `page` (0 tabanlı), `size` (varsayılan 12, en fazla 100), `category` (verilmezse tümü). Yanıt: `{content: [...], page: {size, number, totalElements, totalPages}}`. |
+| **GET** | `/api/products/{id}` | 🌐 | Tek ürünü getirir. |
 | **POST** | `/api/products` | 👑 | Yeni ürün ekler. |
 | **PUT** | `/api/products/{id}` | 👑 | Ürünü günceller. |
 | **DELETE** | `/api/products/{id}` | 👑 | Ürünü, ona bağlı sepet kalemlerini ve favorileri siler. |
@@ -344,6 +490,8 @@ Sırayla üç şey ayağa kalkar: **veritabanı → backend → frontend.** Veri
    ```
 4. Geliştirici sunucusunu başlatın: `npm run dev`
 5. Tarayıcınızda `http://localhost:3000` adresine giderek projeyi görüntüleyin.
+
+> **Frontend'i başka bir portta çalıştıracaksan** backend'i `CORS_ORIGINS` ile başlat (ör. `$env:CORS_ORIGINS="http://localhost:3001"`), yoksa tarayıcı yanıtları engeller ve sayfa boş görünür (bkz. *CORS: tarayıcının ayrı kapısı*).
 
 > **3. adım atlanamaz.** `.env.local` dosyası `.gitignore`'dadır, yani projeyi klonlayan kimseye gelmez. `useApi` base URL'i bu değişkenden okur; tanımsızsa her istek `undefined/api/...` adresine gider. Uygulama hata vermeden açılır ama hiçbir ürün, sepet veya sipariş görünmez — bu yüzden teşhisi zor bir hatadır. Değişken adının `NEXT_PUBLIC_` ile başlaması zorunludur; Next.js yalnızca bu öneke sahip değişkenleri tarayıcıya gönderir.
 
@@ -428,6 +576,9 @@ Dürüst kalsın diye not düşülmüştür; henüz **kapatılmamıştır**:
 6. **Stok geri ekleme döngüsü iki controller'da tekrarlıyor:** `OrderController.cancelOrder` ile `AdminOrderController.updateStatus` aynı beş satırı taşıyor. **Bilinçli olarak bırakıldı**, çünkü ortak bir yere çıkarmanın tek dürüst yolu bir service sınıfı açmaktır ve bu, projenin *"ayrı service katmanı yok"* kuralını delerdi: `EmailService` / `JwtService` / `RateLimiter` istisnası burada işlemez — o üçü iş kuralı taşımaz, "iptal edilen siparişin stoğu geri döner" ise düpedüz bir iş kuralıdır. Risk kod uzunluğu değil **sessiz kayma**: kural yarın değişirse bir kapı güncellenip diğeri unutulabilir, ki bu maddenin var olma sebebi zaten tam olarak bunun bir kez yaşanmış olmasıdır. Not edilmeye değer asıl tespit şudur: *"service katmanı yok" kuralı ilk çatlağını burada verdi.* Üçüncü bir çağıran çıktığında karar yeniden gözden geçirilmelidir.
 
 > **Kapatılanlar:**
+> - **`/api/products` sayfalandı.** `findAll()` tüm tabloyu her istekte döndürüyordu (bkz. *Sayfalama*). Yol boyunca öğrenilenler: (1) Sıralamasız sayfalama sessizce bozuktur — `sort` verilmezse sayfalar arasında ürün tekrarlanabilir veya kaybolabilir. (2) `size` üst sınırı konmazsa sayfalama sadece bir parametre arkasına saklanmış olur. (3) Sayfalama, kategori filtresini de sunucuya taşımayı **zorunlu** kılar; tarayıcı artık listenin tamamını görmüyor. (4) `admin/edit/[id]` sayfasının tüm listeyi indirip `.find()` yapması bu iş sırasında ortaya çıktı — sayfalamadan bağımsız olarak da yanlıştı.
+> - **Girdi doğrulama Bean Validation'a taşındı.** `spring-boot-starter-validation` pom'da duruyordu ama projede tek bir `@Valid` yoktu; doğrulamalar controller içinde elle yazılmış `if`'lerdi ve e-posta formatı **hiç** kontrol edilmiyordu (`"asdf"` geçerli sayılıyor, doğrulama kodu hiçbir yere gitmiyordu). Auth, checkout, sepet ve admin durum uçlarındaki DTO'lar işaretlendi (bkz. *Girdi Doğrulama*). Yol boyunca öğrenilenler: (1) Anotasyon koymak yetmez, parametrede `@Valid` yoksa kural sessizce çalışmaz. (2) Doğrulamayı eklemek, `GlobalExceptionHandler` yazılmadan hata mesajlarını **kötüleştirir** — Spring'in varsayılan 400 gövdesinde `message` alanı yoktur, frontend ise her yerde onu okur. (3) Her `if` anotasyona çevrilemez: alanlar arası bağımlılıklar ve sabitten kurulan mesajlar elle kalmalıdır.
+> - **CORS artık ayarlanabilir ve belgeli.** Origin koda gömülüydü (`http://localhost:3000`) ve dokümanda hiç geçmiyordu; frontend'i başka bir adreste çalıştıran biri, backend hiçbir hata loglamadığı için sebebini bulamazdı. Artık `app.cors.allowed-origins` / `CORS_ORIGINS` üzerinden veriliyor ve *CORS: tarayıcının ayrı kapısı* bölümünde anlatılıyor. Yol boyunca öğrenilen: `allowCredentials(true)` gereksizmiş — CORS'ta "credentials" çerez demektir, `Authorization` başlığı değil; o başlık `allowedHeaders` kapsamında geçiyor. Satır kaldırıldı, böylece `CORS_ORIGINS=*` de kullanılabilir hale geldi (spec `*` ile credentials'ı birlikte yasaklar).
 > - **Admin panelinden yapılan iptal artık stoğu geri ekliyor.** Önceden `AdminOrderController` yalnızca `OrderRepository` alıyordu; admin bir siparişi `CANCELLED` yaptığında durum değişiyor ama stok geri gelmiyordu. Yani "iptal edilen siparişin stoğu geri döner" kuralı yalnızca kullanıcı kapısında geçerliydi. Yol boyunca öğrenilenler: (1) Stok geri eklemeyi yazmak kolay kısımdı, zor kısım **iki kez yazılmamasını** sağlamaktı — çözüm bir bayrak tutmak değil, `CANCELLED`'ı terminal duruma çevirip ikinci iptali yapısal olarak imkânsız kılmak oldu. (2) `ResponseEntity.badRequest()...` yazıp başına `return` koymamak derleyicinin uyarmadığı, akışı hiç durdurmayan sessiz bir hatadır — dokümanın *"`@Transactional` içinde hata dönmek geri alma YAPMAZ"* bölümündeki dersin bir adım öncesi. (3) `"CANCELED"` (tek `L`) gibi bir yazım hatası magic string'lerde sessizce kabul edilir; sabit (`private static final String CANCELLED`) kullanınca aynı hata derleme zamanında yakalanır. (4) `"CANCELLED".equals(x)` yazımı `x.equals("CANCELLED")`'a tercih edilir — `x` `null` olsa bile `NullPointerException` atmaz.
 > - Kimlik uçlarına deneme limiti eklendi (`RateLimiter`); `register` / `login` / `verify` / `resend` artık sınırsız denenemiyor, limit aşılınca `429` + `Retry-After` dönüyor (bkz. *Deneme Limiti*). Sayaç genel amaçlı bir teknik yardımcıdır, limitleri `AuthController` belirler. Yol boyunca öğrenilen: kayıt ucunda e-posta anahtarı işe yaramaz — saldırgan her istekte yeni adres kullandığı için limit hiç tetiklenmez; oradaki ortak nokta kaynak IP'dir.
 > - Sepet yarış durumu ele alındı. (Not: bu madde eskiden "`Cart.user` üzerinde unique kısıtı yok, iki sepet oluşabilir" diye yazılmıştı; **yanlıştı**. Hibernate `@OneToOne`'dan kısıtı üretmiş, canlı şemada `cart.user_id` üzerinde `UNIQUE` duruyor. Yani veri bütünlüğü hiç bozulmuyordu; asıl sorun, kısıtın reddettiği ikinci kaydın yakalanmaması ve kullanıcının 500 almasıydı.) Sepet oluşturma tek bir `getOrCreateCart` metoduna toplandı, `DataIntegrityViolationException` yakalanıp yarışı kazanan isteğin sepeti okunuyor.

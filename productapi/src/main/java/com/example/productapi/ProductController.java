@@ -9,6 +9,12 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.web.PageableDefault;
+import org.springframework.data.web.PagedModel;
+import org.springframework.web.bind.annotation.RequestParam;
+
 @RestController
 @RequestMapping("/api/products")
 public class ProductController{
@@ -24,10 +30,21 @@ public class ProductController{
         this.favoriteRepository = favoriteRepository;
     }
 
+    // Ürün listesi sayfalıdır: sınırsız findAll() tüm tabloyu her istekte
+    // döndürürdü. Kategori filtresi de buraya taşındı — tarayıcı artık
+    // ürünlerin tamamını görmediği için orada filtreleyemez.
     @GetMapping
-    public List<Product> getAllProducts() {
-        return repository.findAll();
+    public PagedModel<Product> getAllProducts(
+            @RequestParam(required = false) String category,
+            @PageableDefault(size = 12, sort = "id") Pageable pageable) {
+
+        Page<Product> page = (category == null || category.isBlank())
+                ? repository.findAll(pageable)
+                : repository.findByCategory(category, pageable);
+
+        return new PagedModel<>(page);
     }
+
 
     // Add a new product
     @PostMapping

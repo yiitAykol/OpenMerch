@@ -42,25 +42,25 @@ export default function EditProductPage() {
   useEffect(() => {
     const fetchProduct = async () => {
       try {
-        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/products`);
+        // Tek ürün için tek ürün ucu: eskiden tüm liste indirilip .find() ile
+        // aranıyordu. Liste artık sayfalı olduğu için bu zaten çalışmazdı.
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/products/${id}`);
         if (res.ok) {
-          const products = await res.json();
-          const product = products.find((p: any) => p.id.toString() === id);
-          if (product) {
-            setFormData({
-              name: product.name,
-              description: product.description,
-              price: product.price.toString(),
-              // Stok alanı eski ürünlerde tanımsız gelebilir; boş string
-              // yerine "0" koyuyoruz ki input kontrolsüz (uncontrolled) olmasın.
-              stock: (product.stock ?? 0).toString(),
-              imageUrl: product.imageUrl,
-              category: product.category ?? "",
-            });
-          } else {
-            alert("Ürün bulunamadı!");
-            router.push("/admin");
-          }
+          const product = await res.json();
+          setFormData({
+            name: product.name,
+            description: product.description,
+            price: product.price.toString(),
+            // Stok alanı eski ürünlerde tanımsız gelebilir; boş string
+            // yerine "0" koyuyoruz ki input kontrolsüz (uncontrolled) olmasın.
+            stock: (product.stock ?? 0).toString(),
+            imageUrl: product.imageUrl,
+            category: product.category ?? "",
+          });
+        } else {
+          // "Bulunamadı" artık find()'ın undefined dönmesiyle değil, 404 ile anlaşılıyor.
+          alert("Ürün bulunamadı!");
+          router.push("/admin");
         }
       } catch (error) {
         console.error("Hata:", error);

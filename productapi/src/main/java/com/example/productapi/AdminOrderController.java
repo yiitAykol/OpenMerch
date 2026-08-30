@@ -4,6 +4,9 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
+
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -35,14 +38,17 @@ public class AdminOrderController {
     }
 
     public static class StatusRequest {
+        // Yalnızca "boş mu" sorusu anotasyona taşınabilir; "geçerli bir durum mu"
+        // sorusunun cevabı ALLOWED_STATUSES'ta durur ve orada kalmalıdır.
+        @NotBlank(message = "Sipariş durumu boş olamaz.")
         public String status;
     }
 
     // Sipariş durumunu günceller (Hazırlanıyor, Kargoya Verildi, ...).
     @Transactional
     @PutMapping("/{id}/status")
-    public ResponseEntity<?> updateStatus(@PathVariable Long id, @RequestBody StatusRequest req) {
-        String status = req.status == null ? "" : req.status.trim().toUpperCase();
+    public ResponseEntity<?> updateStatus(@PathVariable Long id, @Valid @RequestBody StatusRequest req) {
+        String status = req.status.trim().toUpperCase();
         if (!ALLOWED_STATUSES.contains(status)) {
             return ResponseEntity.badRequest().body(Map.of("message", "Geçersiz sipariş durumu."));
         }

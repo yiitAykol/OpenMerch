@@ -7,6 +7,9 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.security.core.Authentication;
 import org.springframework.http.HttpStatus;
 
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
+
 import java.util.Map;
 import java.util.Optional;
 
@@ -61,18 +64,20 @@ public class CartController {
     }
 
     public static class CartItemRequest {
+        @NotNull(message = "productId zorunludur.")
         public Long productId;
+        // Adet sınırı bilerek anotasyona taşınmadı: üst sınır MAX_QUANTITY_PER_ITEM
+        // sabitinde tek yerde duruyor ve mesajı o sabitten kuruluyor. @Max(...) ile
+        // birlikte sayıyı bir de mesaj metnine yazmak gerekirdi; iki kopya zamanla
+        // ayrışır. Ayrıca asıl kural "mevcut + gelen adet" üzerinden işliyor,
+        // onu tek bir alana bakan anotasyon zaten ifade edemez.
         public int quantity;
     }
 
     @PostMapping("/items")
-    public ResponseEntity<?> addItemToCart(Authentication authentication, @RequestBody CartItemRequest request) {
+    public ResponseEntity<?> addItemToCart(Authentication authentication, @Valid @RequestBody CartItemRequest request) {
         if (authentication == null || !(authentication.getPrincipal() instanceof User user)) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
-        }
-
-        if (request.productId == null) {
-            return ResponseEntity.badRequest().body(Map.of("message", "productId zorunludur."));
         }
 
         // Tek istekteki adet sınırı. Bu kontrol TEK BAŞINA yeterli değildir:

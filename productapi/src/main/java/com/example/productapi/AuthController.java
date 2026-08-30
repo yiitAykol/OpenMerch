@@ -7,7 +7,6 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
 import jakarta.servlet.http.HttpServletRequest;
-
 import java.security.SecureRandom;
 import java.time.Duration;
 import java.time.Instant;
@@ -15,6 +14,8 @@ import java.time.temporal.ChronoUnit;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.*;
 
 @RestController
 @RequestMapping("/api/auth")
@@ -60,46 +61,59 @@ public class AuthController {
 
     // ---- İstek gövdeleri (DTO) ----
     public static class RegisterRequest {
+        @NotBlank(message = "Kullanıcı adı boş olamaz")
         public String username;
+        @NotBlank(message = "E-posta boş olamaz")
+        @Email(message = "E-posta formatı geçersiz")
         public String email;
+        @NotBlank(message = "Şifre boş olamaz")
+        @Size(min = 6, message = "Şifre en az 6 karakter olmalıdır")
         public String password;
     }
 
     public static class VerifyRequest {
+        @NotBlank(message = "E-posta boş olamaz")
+        @Email(message = "E-posta formatı geçersiz")
         public String email;
+        // Kasten yalnızca @NotBlank: @Pattern("\\d{6}") eklemek, kodu boşluklu
+        // yapıştıran kullanıcıyı reddederdi. Kıyaslama zaten trim() ile yapılıyor.
+        @NotBlank(message = "Doğrulama kodu boş olamaz")
         public String code;
     }
 
     public static class LoginRequest {
+        @NotBlank(message = "E-posta boş olamaz")
+        @Email(message = "E-posta formatı geçersiz")
         public String email;
+        // Kasten @Size yok: giriş ucunda uzunluk kuralı, şifre politikasını sızdırır ve
+        // "e-posta veya şifre hatalı" genel mesajını deler. Format kuralı kayıt ucunda durur.
+        @NotBlank(message = "Şifre boş olamaz")
         public String password;
     }
 
     public static class ResendRequest {
+        @NotBlank(message = "E-posta boş olamaz")
+        @Email(message = "E-posta formatı geçersiz")
         public String email;
     }
 
     public static class ChangePasswordRequest {
+        @NotBlank(message = "Eski şifre boş olamaz")
         public String oldPassword;
+        @NotBlank(message = "Yeni şifre boş olamaz")
+        @Size(min = 6, message = "Şifre en az 6 karakter olmalıdır")
         public String newPassword;
     }
 
     // 1) KAYIT: kullanıcıyı devre dışı (enabled=false) oluşturur, kod üretir ve e-posta atar.
     @PostMapping("/register")
-    public ResponseEntity<?> register(@RequestBody RegisterRequest req, HttpServletRequest request) {
+    public ResponseEntity<?> register(@Valid @RequestBody RegisterRequest req, HttpServletRequest request) {
         // Anahtar burada e-posta olamaz: kayıt var olan adresi zaten reddediyor, saldırgan
         // her istekte yeni bir adres kullanır ve her biri ayrı kovaya düşer. Kötüye
         // kullanımın ortak noktası kaynak IP'dir.
         String key = rateKey("register", request.getRemoteAddr());
         if (!rateLimiter.tryConsume(key, REGISTER_MAX_ATTEMPTS, RATE_LIMIT_WINDOW)) {
             return tooManyRequests(key);
-        }
-
-        if (req.username == null || req.username.isBlank()
-                || req.email == null || req.email.isBlank()
-                || req.password == null || req.password.length() < 6) {
-            return ResponseEntity.badRequest().body(Map.of(
-                    "message", "Kullanıcı adı, e-posta ve en az 6 karakterlik şifre zorunludur."));
         }
 
         if (userRepository.existsByEmail(req.email)) {
@@ -123,14 +137,14 @@ public class AuthController {
 
     // 2) DOĞRULAMA: koda ve süreye bakar, doğruysa hesabı aktifleştirir ve JWT döner.
     @PostMapping("/verify")
-    public ResponseEntity<?> verify(@RequestBody VerifyRequest req) {
+    public ResponseEntity<?> verify(@Valid @RequestBody VerifyRequest req) {
         // Limit önce: 6 haneli kod aksi halde süresi dolana dek kaba kuvvetle denenebilir.
         String key = rateKey("verify", req.email);
         if (!rateLimiter.tryConsume(key, VERIFY_MAX_ATTEMPTS, RATE_LIMIT_WINDOW)) {
             return tooManyRequests(key);
         }
 
-        Optional<User> opt = userRepository.findByEmail(req.email == null ? "" : req.email);
+        Optional<User> opt = userRepository.findByEmail(req.email);
         if (opt.isEmpty()) {
             return ResponseEntity.badRequest().body(Map.of("message", "Kullanıcı bulunamadı."));
         }
@@ -144,7 +158,7 @@ public class AuthController {
             return ResponseEntity.badRequest().body(Map.of(
                     "message", "Kodun süresi dolmuş. Lütfen yeni kod isteyin."));
         }
-        if (!user.getVerificationCode().equals(req.code == null ? "" : req.code.trim())) {
+        if (!user.getVerificationCode().equals(req.code.trim())) {
             return ResponseEntity.badRequest().body(Map.of("message", "Kod hatalı."));
         }
 
@@ -165,14 +179,14 @@ public class AuthController {
 
     // 3) GİRİŞ: şifre ve doğrulanmışlık kontrolü, başarılıysa JWT döner.
     @PostMapping("/login")
-    public ResponseEntity<?> login(@RequestBody LoginRequest req) {
+    public ResponseEntity<?> login(@Valid @RequestBody LoginRequest req) {
         // Limit, DB sorgusundan ve bcrypt karşılaştırmasından önce: ikisi de pahalıdır.
         String key = rateKey("login", req.email);
         if (!rateLimiter.tryConsume(key, LOGIN_MAX_ATTEMPTS, RATE_LIMIT_WINDOW)) {
             return tooManyRequests(key);
         }
 
-        Optional<User> opt = userRepository.findByEmail(req.email == null ? "" : req.email);
+        Optional<User> opt = userRepository.findByEmail(req.email);
         if (opt.isEmpty() || opt.get().getPassword() == null
                 || !passwordEncoder.matches(req.password, opt.get().getPassword())) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
@@ -197,14 +211,14 @@ public class AuthController {
 
     // 4) KODU TEKRAR GÖNDER
     @PostMapping("/resend")
-    public ResponseEntity<?> resend(@RequestBody ResendRequest req) {
+    public ResponseEntity<?> resend(@Valid @RequestBody ResendRequest req) {
         // Burada reset yok: başarı/başarısızlık ayrımı yok, her istek gerçek bir e-posta yolluyor.
         String key = rateKey("resend", req.email);
         if (!rateLimiter.tryConsume(key, RESEND_MAX_ATTEMPTS, RATE_LIMIT_WINDOW)) {
             return tooManyRequests(key);
         }
 
-        Optional<User> opt = userRepository.findByEmail(req.email == null ? "" : req.email);
+        Optional<User> opt = userRepository.findByEmail(req.email);
         if (opt.isEmpty()) {
             return ResponseEntity.badRequest().body(Map.of("message", "Kullanıcı bulunamadı."));
         }
@@ -230,7 +244,7 @@ public class AuthController {
 
     // 6) ŞİFRE DEĞİŞTİRME: Mevcut kullanıcının şifresini doğrular ve günceller.
     @PostMapping("/change-password")
-    public ResponseEntity<?> changePassword(Authentication authentication, @RequestBody ChangePasswordRequest req) {
+    public ResponseEntity<?> changePassword(Authentication authentication, @Valid @RequestBody ChangePasswordRequest req) {
         if (authentication == null || !(authentication.getPrincipal() instanceof User user)) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("message", "Oturum bulunamadı."));
         }
