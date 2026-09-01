@@ -41,4 +41,19 @@ public interface ProductRepository extends JpaRepository<Product, Long>{
     // ("findBy" + "Category") okuyup sorguyu kendisi üretir.
     Page<Product> findByCategory(String category, Pageable pageable);
 
+    // Stok aralığına göre sayfalı liste. Admin stok ekranının hem hazır kovaları
+    // ("Tükendi" 0–0, "Kritik" 0–5) hem de serbest aralığı (ör. 3–15) bu iki
+    // metoda düşer — ikisi de aynı sorunun farklı yazılışıdır.
+    //
+    // Between iki ucu da DAHİL eder; "0–5" tükenmiş ürünü de kapsar.
+    //
+    // Neden null-toleranslı tek bir @Query değil: kategori + alt sınır + üst sınır
+    // üçü de isteğe bağlı olduğu için sorguya null taşımak sekiz kombinasyon
+    // demekti. Stoğun doğal alt sınırı (0) ve üst sınırı olduğundan, "sınır yok"
+    // durumu controller'da en geniş değere çevriliyor: null sorguya hiç girmiyor,
+    // geriye yalnızca kategori dallanması kalıyor.
+    Page<Product> findByStockBetween(int minStock, int maxStock, Pageable pageable);
+
+    Page<Product> findByCategoryAndStockBetween(String category, int minStock, int maxStock, Pageable pageable);
+
 }

@@ -83,6 +83,10 @@ Bu doküman, Spring Boot ve Next.js kullanılarak geliştirilen "StackBootProjec
    - **Erişim:** Yalnızca `role = ADMIN` olan kullanıcılar. `/admin` altındaki tüm sayfalar `app/admin/layout.tsx` ile korunur: giriş yoksa `/login`'e, rol yetersizse ana sayfaya yönlendirilir.
    - **Ürün Yönetimi (`/admin`):** Ürün listesi tablosu; ekleme (`/admin/add`), düzenleme (`/admin/edit/{id}`) ve silme. Ürün silinirken o ürüne ait sepet kalemleri ve favoriler de temizlenir (foreign key hatası olmaması için). Listede **Stok** kolonu vardır: tükenmiş ürün kırmızı "Tükendi", 5 ve altı turuncu, gerisi yeşil gösterilir. Ekleme ve düzenleme formlarında stok adedi alanı bulunur. Tablo sayfa numaralarıyla gezilir (sayfa başına 10 ürün) ve toplam ürün sayısı gösterilir; silme sonrası liste sunucudan yeniden çekilir (bkz. *Sayfalama*).
      - **Dikkat:** `ProductController.updateProduct` alanları tek tek kopyalar. `setStock` satırı unutulursa **her düzenlemede stok sessizce sıfırlanır** ve ürün satılamaz hale gelir — sebebi de kolay anlaşılmaz. Yeni bir alan eklendiğinde bu metot da güncellenmelidir.
+   - **Stok Yönetimi (`/admin/stock`) - *[YENİ]* **: Ürün düzenleme formuna hiç girmeden stok düzeltmek için ayrı bir ekran. Liste **alfabetiktir** (`sort=name,asc&sort=id,asc`), sayfa başına 10 ürün. Her satırda mevcut stok (tükendi kırmızı, ≤5 turuncu, gerisi yeşil), `−1` / metin kutusu / `+1` düğmeleri ve "Kaydet" vardır; fark yazılınca mevcut stoğun yanında `3 → 13` önizlemesi belirir. Hata mesajı satırın altında görünür, `alert` kullanılmaz — aynı ekranda arka arkaya çok işlem yapıldığı için modal kesici olurdu.
+     - **Stok mutlak değil, FARK olarak yazılır** (`+10` / `-3`) — sebebi aşağıda: *Stok düzeltmesi neden mutlak değer değil*.
+     - **Filtreler:** Hazır kovalar (`Tümü · Tükendi · Kritik (≤5) · Az (≤20) · Stokta var`) ve serbest `min – max` aralığı. İkisi de tek bir `range` state'ini besler, o yüzden çakışmazlar: kova seçilince kutular da dolar, kutular elle değiştirilince kova vurgusu düşer. Kutular ayrı bir "taslak" state'te tutulur ki her tuşa basışta istek gitmesin. Filtre değişince sayfa 0'a döner — 4. sayfadayken filtre daraltılırsa o sayfa artık var olmayabilir ve kullanıcı sebepsiz boş bir tabloya bakardı. Boş sonuç mesajı da filtreye göre değişir: filtre varken *"Bu stok aralığında ürün yok"* denir, *"Henüz hiç ürün eklenmemiş"* demek kataloğun boş olduğunu sandırırdı.
+     - **Kayıttan sonra liste yeniden çekilmez** (`/admin`'deki silmenin aksine: orada satır sayısı ve sayfa bölümlemesi değişir, burada yalnızca bir hücrenin değeri değişir). Ama yeni stok `eski + delta` ile de hesaplanmaz — **yanıttaki değer** yazılır. Araya bir sipariş girmişse doğru sayı yalnızca sunucunun döndüğüdür.
    - **Kategori Yönetimi (`/admin/categories`):** Kategori ekleme ve silme. Aynı isimde ikinci kategori eklenemez.
    - **Banner Yönetimi (`/admin/banners`):** Ana sayfa slider'ına banner ekleme/silme, URL girilirken canlı önizleme.
    - **Sipariş Yönetimi (`/admin/orders`):** Tüm siparişler en yenisi üstte listelenir; müşteri, tutar ve durum görünür. Durum açılır kutudan güncellenir, "Göster" ile satırın altında kalemler ve teslimat/fatura bilgileri açılır. Geçerli durumlar backend'de sabit bir kümede tutulur (`AdminOrderController.ALLOWED_STATUSES`), böylece arayüzden gelen rastgele bir metin veritabanına yazılamaz.
@@ -246,11 +250,13 @@ Dört tasarım kararı:
 | Ekran | Desen | Neden |
 | :--- | :--- | :--- |
 | Ana sayfa (`/`) | **"Daha fazla göster"** — yeni sayfa mevcut listenin altına eklenir | Vitrinde akış bölünmemeli; kullanıcı ürünlere bakarken sayfa değiştirmek istemez |
-| Admin (`/admin`) | **Sayfa numaraları** — her tıklamada liste tamamen değişir | Tabloda "kaç ürün var, kaçıncı sayfadayım, şu sayfaya dönebilir miyim" soruları önemlidir |
+| Admin (`/admin`, `/admin/stock`) | **Sayfa numaraları** — her tıklamada liste tamamen değişir | Tabloda "kaç ürün var, kaçıncı sayfadayım, şu sayfaya dönebilir miyim" soruları önemlidir |
 
 İki dikkat noktası:
 
 - **Kategori değişince liste sıfırlanır** (`append = false`), aksi halde eski kategorinin ürünleri yenilerin üstünde kalırdı.
+- **Sıralama ölçütü benzersiz değilse ikinci bir ölçüt şarttır.** `/admin/stock` alfabetiktir ama isteği `sort=name,asc` diye **tek** ölçütle atmaz; `sort=name,asc&sort=id,asc` atar. Aynı isimli iki ürün varsa aralarındaki sıra veritabanının keyfine kalır ve sayfa değiştirildiğinde ürün tekrarlanabilir ya da hiç görünmeyebilir. Bu, bölümün başındaki "sıralamasız sayfalama sessizce bozuktur" kuralının aynısıdır: `sort` **vermek** yetmez, verdiğin sıranın **kararlı** olması gerekir. `id` burada yalnızca eşitlik bozucudur.
+- **Filtre değişince sayfa 0'a döner** (`/admin/stock`). 4. sayfadayken filtre daraltılırsa o sayfa artık var olmayabilir; sunucu boş `content` döner ve kullanıcı sebebini anlamadığı boş bir tabloya bakar.
 - **Admin'de silme sonrası liste yeniden çekilir.** Kalemi state'ten elle çıkarmak yetmez: toplam sayı ve sayfa bölümlemesi sunucuda hesaplanır. Sayfadaki son ürün silindiyse bir önceki sayfaya düşülür, yoksa kullanıcı boş bir tabloya bakar.
 - `admin/edit/[id]` sayfası **tek ürün ucunu** kullanır. Eskiden tüm listeyi indirip `.find()` ile arıyordu; bu sayfalamadan bağımsız olarak da yanlıştı (bir ürünü düzenlemek için 500 ürün indirmek), sayfalamayla birlikte ise tamamen çalışmaz hale gelirdi.
 
@@ -420,6 +426,38 @@ throw new InsufficientStockException(product.getName() + " için yeterli stok yo
 
 Sepetteki kontrol neden garanti değildir: sepet bir rezervasyon değil, bir listedir. Ürün sepete konduktan sonra o stok başkası tarafından tüketilebilir. "Zaten sepette kontrol ettim" deyip checkout'taki kontrolü atlamak kolay bir hatadır ve tam da en pahalı yerde patlar.
 
+### Stok düzeltmesi neden mutlak değer değil, fark
+
+Admin stok ekranı (`/admin/stock`) stoğu **fark** olarak yazar (`{"delta": 10}` / `{"delta": -3}`), "stok tam olarak 30 olsun" demez. Mutlak yazmak, bu dokümanın baştan beri anlattığı boşluğun bir başka yüzüdür — sadece bu kez kontrol ile davranışın arasına **insan** girer:
+
+1. Admin tabloyu açar, ürünün stoğunu **10** görür.
+2. O sırada bir müşteri 1 adet satın alır; stok **9** olur.
+3. Admin "10 olsun" diye kaydeder.
+
+Sonuç: veritabanına 10 yazılır ve **o satış silinmiştir.** Kimse hata görmez, kimse uyarılmaz; ürün stokta duruyor gibi görünür. Bu klasik **kayıp güncellemedir** (lost update) ve sipariş ne kadar hızlı gelirse gelsin çözülmez, çünkü sorun hızda değil, kararın *nerede* verildiğindedir: mutlak yazmada karar tarayıcıda (admin'in gördüğü eski sayıda), farkta ise veritabanındadır.
+
+```java
+// Fark: karar veritabanında, araya giren satış korunur
+UPDATE Product p SET p.stock = p.stock + :delta WHERE p.id = :id
+```
+
+Bu yüzden uç nokta mevcut `increaseStock` / `decreaseStock` sorgularını **olduğu gibi** kullanır. Negatif tarafta `decreaseStock`'un koşullu olması ayrıca bedavaya gelir: admin elindekinden fazlasını düşüremez, stok eksiye inemez.
+
+> Karşılığında kaybedilen şey: "stoğu tam 30 yap" demek doğrudan mümkün değildir, admin farkı kendisi hesaplar (arayüzdeki `3 → 13` önizlemesi tam da bunun içindir). Sayım/düzeltme için ileride mutlak bir uç istenirse, o ucun eski değeri de isteyip (`{"expected": 9, "stock": 30}`) uyuşmadığında reddetmesi gerekir — yani optimistic locking. Bedava değildir; şimdilik açılmadı.
+
+### Stok yazan dördüncü kapı
+
+Yukarıdaki tabloya bu ekranla birlikte bir satır daha eklendi. Stoğu **yazan** yerler artık şunlardır:
+
+| Yer | Ne yapar | Yön |
+| :--- | :--- | :--- |
+| `OrderController.checkout` | Sipariş verilince düşürür (koşullu) | ↓ |
+| `OrderController.cancelOrder` | Kullanıcı iptalinde geri ekler | ↑ |
+| `AdminOrderController.updateStatus` | Admin iptalinde geri ekler | ↑ |
+| `ProductController.adjustStock` | Admin elle düzeltir | ↕ |
+
+Dördü de aynı iki repository sorgusundan geçer; stoğu `setStock` ile elle yazan **hiçbir** akış yoktur (`updateProduct` istisnadır — orada stok bir düzeltme değil, formdan gelen alanlardan biridir).
+
 ---
 
 ## 🛠️ API Uç Noktaları (Endpoints)
@@ -435,9 +473,10 @@ Erişim sütunu: 🌐 herkese açık · 🔑 giriş gerekir · 👑 `ADMIN` rol�
 | **GET** | `/api/auth/me` | 🔑 | Token sahibinin bilgisini döner: `{id, username, email, role}`. |
 | **POST** | `/api/auth/change-password` | 🔑 | Şifre değiştirir. Gövde: `{oldPassword, newPassword}`. |
 | **DELETE** | `/api/auth/delete-account` | 🔑 | Hesabı, sepetini ve favorilerini siler. |
-| **GET** | `/api/products` | 🌐 | Ürünleri **sayfalı** listeler. Parametreler: `page` (0 tabanlı), `size` (varsayılan 12, en fazla 100), `category` (verilmezse tümü). Yanıt: `{content: [...], page: {size, number, totalElements, totalPages}}`. |
+| **GET** | `/api/products` | 🌐 | Ürünleri **sayfalı** listeler. Parametreler: `page` (0 tabanlı), `size` (varsayılan 12, en fazla 100), `category` (verilmezse tümü), `minStock` / `maxStock` (stok aralığı, **iki uç da dahil**, verilmezse o uçta sınır yok). `minStock > maxStock` ise 400 + mesaj döner — sessizce boş liste dönmek, kullanıcıya filtreyi ters girdiğini değil elde ürün olmadığını sandırırdı. Yanıt: `{content: [...], page: {size, number, totalElements, totalPages}}`. |
 | **GET** | `/api/products/{id}` | 🌐 | Tek ürünü getirir. |
 | **POST** | `/api/products` | 👑 | Yeni ürün ekler. |
+| **POST** | `/api/products/{id}/stock` | 👑 | Stoğu **fark** kadar değiştirir. Gövde: `{delta}` — pozitif ekler, negatif düşürür. `delta` eksikse veya `0` ise 400 + mesaj. Düşürmede stok yetmezse hiç yazmaz, 400 + mesaj döner. Yanıt güncel ürünün tamamıdır. (bkz. *Stok düzeltmesi neden mutlak değer değil, fark*) |
 | **PUT** | `/api/products/{id}` | 👑 | Ürünü günceller. |
 | **DELETE** | `/api/products/{id}` | 👑 | Ürünü, ona bağlı sepet kalemlerini ve favorileri siler. |
 | **GET** | `/api/categories` | 🌐 | Kategorileri listeler. |
@@ -573,9 +612,19 @@ Dürüst kalsın diye not düşülmüştür; henüz **kapatılmamıştır**:
 
 4. **Test yok:** Yalnızca varsayılan `contextLoads` testi mevcut. Sipariş akışı (sahiplik kontrolü, snapshot, sepetin boşalması, iptal durum geçişleri) test edilmeye en uygun yer.
 5. **Toast kodu üç kez kopyalanmış:** `Header.tsx` içinde favori bildirimi, `loginRequired` ve `cartError` neredeyse aynı inline-style bloğunu tekrar ediyor; tek bir `Toast` bileşenine çıkması gerekir.
-6. **Stok geri ekleme döngüsü iki controller'da tekrarlıyor:** `OrderController.cancelOrder` ile `AdminOrderController.updateStatus` aynı beş satırı taşıyor. **Bilinçli olarak bırakıldı**, çünkü ortak bir yere çıkarmanın tek dürüst yolu bir service sınıfı açmaktır ve bu, projenin *"ayrı service katmanı yok"* kuralını delerdi: `EmailService` / `JwtService` / `RateLimiter` istisnası burada işlemez — o üçü iş kuralı taşımaz, "iptal edilen siparişin stoğu geri döner" ise düpedüz bir iş kuralıdır. Risk kod uzunluğu değil **sessiz kayma**: kural yarın değişirse bir kapı güncellenip diğeri unutulabilir, ki bu maddenin var olma sebebi zaten tam olarak bunun bir kez yaşanmış olmasıdır. Not edilmeye değer asıl tespit şudur: *"service katmanı yok" kuralı ilk çatlağını burada verdi.* Üçüncü bir çağıran çıktığında karar yeniden gözden geçirilmelidir.
+6. **Stok geri ekleme döngüsü iki controller'da tekrarlıyor:** `OrderController.cancelOrder` ile `AdminOrderController.updateStatus` aynı beş satırı taşıyor. **Bilinçli olarak bırakıldı**, çünkü ortak bir yere çıkarmanın tek dürüst yolu bir service sınıfı açmaktır ve bu, projenin *"ayrı service katmanı yok"* kuralını delerdi: `EmailService` / `JwtService` / `RateLimiter` istisnası burada işlemez — o üçü iş kuralı taşımaz, "iptal edilen siparişin stoğu geri döner" ise düpedüz bir iş kuralıdır. Risk kod uzunluğu değil **sessiz kayma**: kural yarın değişirse bir kapı güncellenip diğeri unutulabilir, ki bu maddenin var olma sebebi zaten tam olarak bunun bir kez yaşanmış olmasıdır. Not edilmeye değer asıl tespit şudur: *"service katmanı yok" kuralı ilk çatlağını burada verdi.* Üçüncü bir çağıran çıktığında karar yeniden gözden geçirilmelidir. **Güncelleme:** stok yazan dördüncü kapı (`ProductController.adjustStock`) eklendi, ama bu maddeyi tetiklemiyor — o uç *stok geri ekleme kuralını* değil, tek bir repository çağrısını kullanıyor; kopyalanan beş satır hâlâ iki yerdedir.
+
+**Şema / ortam**
+
+7. **Hibernate her açılışta geçersiz bir DDL üretiyor:** Loglarda şu `WARN` var —
+   `alter table if exists users alter column role set data type varchar(20) not null default 'USER'`
+   PostgreSQL bu sözdizimini kabul etmiyor (`ERROR: syntax error at or near "not"`); tip değişimi ile `not null default` tek bir `ALTER COLUMN` ifadesinde birleştirilemez, üç ayrı ifade gerekir. Açılışı **engellemiyor** (`ddl-auto=update` hatayı loglayıp devam ediyor), ama `users.role` kolonunun tipi ve varsayılanı canlı şemaya hiçbir zaman uygulanmıyor demektir. Uygulama çalışıyor çünkü rol değeri Java tarafında (`User.role = "USER"`) atanıyor; veritabanı bu kuralı bilmiyor. Elle düzeltmek için:
+   ```powershell
+   docker exec product-db psql -U postgres -d productdb -c "ALTER TABLE users ALTER COLUMN role TYPE VARCHAR(20); ALTER TABLE users ALTER COLUMN role SET DEFAULT 'USER'; UPDATE users SET role='USER' WHERE role IS NULL; ALTER TABLE users ALTER COLUMN role SET NOT NULL;"
+   ```
 
 > **Kapatılanlar:**
+> - **Admin stok yönetimi ekranı eklendi (`/admin/stock`).** Stok zaten vardı ama düzeltmenin tek yolu ürün düzenleme formuydu: tek bir sayıyı değiştirmek için adı, açıklamayı, fiyatı, görseli ve kategoriyi de içeren bir `PUT` göndermek gerekiyordu — yani stok düzeltmek, farkında olmadan **başka alanları da yeniden yazmak** demekti. Yeni ekran alfabetik listeler, stok aralığına göre filtreler (hazır kovalar + serbest `min–max`) ve satır içinde düzeltir. Yol boyunca öğrenilenler: (1) **Stoğu mutlak değerle yazmak sessiz bir veri kaybıdır** — admin 10 görüp 10 yazarken araya giren satış silinir; fark yazmak kararı tarayıcıdan veritabanına taşır (bkz. *Stok düzeltmesi neden mutlak değer değil, fark*). (2) `@Modifying` sorgusu doğrudan veritabanına gider ve persistence context'i güncellemez; aynı transaction içinde ürün önce `findById` ile yüklenmişse güncellemeden **sonraki** okuma eski stoğu döner. Çözüm varlık kontrolünü `existsById` ile yapmaktı — `@Modifying(clearAutomatically = true)` da işe yarardı ama sorgu paylaşıldığı için `checkout` sırasında inşa edilen `Order` nesnesini detach ederdi. (3) İsteğe bağlı filtre parametreleri `int` değil **`Integer`** olmalı: `int` olsaydı parametre hiç gelmediğinde `0` sayılır ve `maxStock=0` anlamına gelirdi — vitrin ana sayfası sessizce yalnızca tükenmiş ürünleri gösterirdi. (4) Kategori + alt sınır + üst sınırın üçü de isteğe bağlı olunca sorguya `null` taşımak sekiz kombinasyon demekti; "sınır yok" durumunu controller'da en geniş değere çevirmek (`0` … `Integer.MAX_VALUE`) `null`'ı sorgudan tamamen çıkardı ve türetilmiş metotlar yetti.
 > - **`/api/products` sayfalandı.** `findAll()` tüm tabloyu her istekte döndürüyordu (bkz. *Sayfalama*). Yol boyunca öğrenilenler: (1) Sıralamasız sayfalama sessizce bozuktur — `sort` verilmezse sayfalar arasında ürün tekrarlanabilir veya kaybolabilir. (2) `size` üst sınırı konmazsa sayfalama sadece bir parametre arkasına saklanmış olur. (3) Sayfalama, kategori filtresini de sunucuya taşımayı **zorunlu** kılar; tarayıcı artık listenin tamamını görmüyor. (4) `admin/edit/[id]` sayfasının tüm listeyi indirip `.find()` yapması bu iş sırasında ortaya çıktı — sayfalamadan bağımsız olarak da yanlıştı.
 > - **Girdi doğrulama Bean Validation'a taşındı.** `spring-boot-starter-validation` pom'da duruyordu ama projede tek bir `@Valid` yoktu; doğrulamalar controller içinde elle yazılmış `if`'lerdi ve e-posta formatı **hiç** kontrol edilmiyordu (`"asdf"` geçerli sayılıyor, doğrulama kodu hiçbir yere gitmiyordu). Auth, checkout, sepet ve admin durum uçlarındaki DTO'lar işaretlendi (bkz. *Girdi Doğrulama*). Yol boyunca öğrenilenler: (1) Anotasyon koymak yetmez, parametrede `@Valid` yoksa kural sessizce çalışmaz. (2) Doğrulamayı eklemek, `GlobalExceptionHandler` yazılmadan hata mesajlarını **kötüleştirir** — Spring'in varsayılan 400 gövdesinde `message` alanı yoktur, frontend ise her yerde onu okur. (3) Her `if` anotasyona çevrilemez: alanlar arası bağımlılıklar ve sabitten kurulan mesajlar elle kalmalıdır.
 > - **CORS artık ayarlanabilir ve belgeli.** Origin koda gömülüydü (`http://localhost:3000`) ve dokümanda hiç geçmiyordu; frontend'i başka bir adreste çalıştıran biri, backend hiçbir hata loglamadığı için sebebini bulamazdı. Artık `app.cors.allowed-origins` / `CORS_ORIGINS` üzerinden veriliyor ve *CORS: tarayıcının ayrı kapısı* bölümünde anlatılıyor. Yol boyunca öğrenilen: `allowCredentials(true)` gereksizmiş — CORS'ta "credentials" çerez demektir, `Authorization` başlığı değil; o başlık `allowedHeaders` kapsamında geçiyor. Satır kaldırıldı, böylece `CORS_ORIGINS=*` de kullanılabilir hale geldi (spec `*` ile credentials'ı birlikte yasaklar).

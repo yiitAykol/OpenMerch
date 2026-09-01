@@ -83,6 +83,9 @@ export default function AdminPage() {
       <div className={styles.header}>
         <h1>Ürün Yönetimi</h1>
         <div style={{ display: "flex", gap: "0.75rem" }}>
+          <Link href="/admin/stock" className={styles.addButton}>
+            Stok
+          </Link>
           <Link href="/admin/orders" className={styles.addButton}>
             Siparişler
           </Link>
