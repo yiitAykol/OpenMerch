@@ -263,9 +263,22 @@ public class AuthController {
         }
 
         dbUser.setPassword(passwordEncoder.encode(req.newPassword));
+
+        // Bu andan ÖNCE üretilmiş bütün token'lar geçersiz olur (bkz. JwtAuthFilter).
+        // Saniyeye yuvarlanır, çünkü JWT'nin iat claim'i epoch SANİYESİ tutar: yuvarlamazsak
+        // hemen aşağıda üretilen taze token'ın iat'ı (aşağı yuvarlanmış) bu andan küçük
+        // kalır ve kullanıcı kendi yeni token'ıyla bile içeri giremezdi.
+        dbUser.setPasswordChangedAt(Instant.now().truncatedTo(ChronoUnit.SECONDS));
         userRepository.save(dbUser);
 
-        return ResponseEntity.ok(Map.of("message", "Şifre başarıyla güncellendi."));
+        // Kullanıcının KENDİ oturumu devam etsin diye taze bir token dönülür; iptal edilen
+        // yalnızca diğer cihazlardaki (ve varsa hırsızdaki) eski token'lardır. Aksi hâlde
+        // şifresini değiştiren herkes kendi kendini de dışarı atmış olurdu.
+        String token = jwtService.generateToken(dbUser);
+
+        return ResponseEntity.ok(Map.of(
+                "message", "Şifre başarıyla güncellendi. Diğer cihazlardaki oturumlar kapatıldı.",
+                "token", token));
     }
 
     // 7) HESAP SİLME: Mevcut kullanıcının hesabını ve ilişkili verilerini siler.

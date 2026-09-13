@@ -25,6 +25,7 @@ interface AuthContextProps {
   verify: (email: string, code: string) => Promise<AuthResponse>;
   resend: (email: string) => Promise<AuthResponse>;
   login: (email: string, password: string) => Promise<AuthResponse>;
+  replaceToken: (newToken: string) => void;
   logout: () => void;
 }
 
@@ -36,6 +37,7 @@ const AuthContext = createContext<AuthContextProps>({
   verify: async () => ({ ok: false, message: "" }),
   resend: async () => ({ ok: false, message: "" }),
   login: async () => ({ ok: false, message: "" }),
+  replaceToken: () => { },
   logout: () => { },
 });
 
@@ -110,6 +112,14 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     return result;
   };
 
+  // Şifre değiştirme gibi durumlarda backend eskisini iptal edip taze bir token döner.
+  // Kullanıcı bilgisi değişmediği için persistSession değil bu kullanılır: o, user
+  // alanı da gelmediği sürece hiçbir şey yazmaz ve token sessizce eskimiş kalırdı.
+  const replaceToken = (newToken: string) => {
+    localStorage.setItem(TOKEN_KEY, newToken);
+    setToken(newToken);
+  };
+
   const logout = () => {
     localStorage.removeItem(TOKEN_KEY);
     setToken(null);
@@ -118,7 +128,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   return (
     <AuthContext.Provider
-      value={{ user, token, loading, register, verify, resend, login, logout }}
+      value={{ user, token, loading, register, verify, resend, login, replaceToken, logout }}
     >
       {children}
     </AuthContext.Provider>

@@ -11,6 +11,7 @@ import org.springframework.security.web.authentication.WebAuthenticationDetailsS
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import java.time.Instant;
 import java.util.List;
 
 
@@ -38,10 +39,23 @@ public class JwtAuthFilter extends OncePerRequestFilter {
         String header = request.getHeader("Authorization");
         if (header != null && header.startsWith("Bearer ")) {
             String token = header.substring(7);
-            Long userId = jwtService.extractUserId(token);
+            JwtService.TokenInfo info = jwtService.parse(token);
 
-            if (userId != null && SecurityContextHolder.getContext().getAuthentication() == null) {
-                userRepository.findById(userId).ifPresent(user -> {
+            if (info != null && SecurityContextHolder.getContext().getAuthentication() == null) {
+                userRepository.findById(info.userId()).ifPresent(user -> {
+                    // Şifre, token üretildikten SONRA değiştiyse bu token artık geçersizdir.
+                    // null = şifre hiç değiştirilmemiş, kontrol edilecek bir şey yok.
+                    // isBefore (kesin küçüktür) bilinçlidir: iat saniyeye yuvarlandığı için
+                    // "aynı saniye" eşit sayılmalı, yoksa şifre değişiminden hemen sonra
+                    // üretilen taze token da reddedilirdi.
+                    Instant changedAt = user.getPasswordChangedAt();
+                    if (changedAt != null && info.issuedAt().isBefore(changedAt)) {
+                        // Yalnızca lambda'dan çıkar: kimlik yerleştirilmez, istek anonim devam eder.
+                        // Reddetme kararını Spring Security verir (korumalı uçta 401/403,
+                        // açık uçta istek normal geçer).
+                        return;
+                    }
+
                     String role = user.getRole() == null ? "USER" : user.getRole();
                     List<SimpleGrantedAuthority> authorities = List.of(new SimpleGrantedAuthority("ROLE_" + role));
                     var auth = new UsernamePasswordAuthenticationToken(

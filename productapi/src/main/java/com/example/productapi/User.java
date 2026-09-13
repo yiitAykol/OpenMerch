@@ -28,6 +28,11 @@ public class User {
     @JsonIgnore
     private String password;
 
+    // Şifrenin en son değiştirildiği an. Bu andan ÖNCE üretilmiş token'lar reddedilir.
+    // null = şifre hiç değiştirilmemiş, o kullanıcının tüm token'ları geçerli.
+    @JsonIgnore
+    private Instant passwordChangedAt;
+
     // E-posta doğrulanana kadar false. Doğrulanınca login'e izin verilir.
     // columnDefinition ile "default false": mevcut satırlar (seed user) varken de
     // kolonun NOT NULL olarak sorunsuz eklenmesini sağlar.
@@ -115,5 +120,12 @@ public class User {
     }
     public void setRole(String role) {
         this.role = role;
+    }
+
+    public Instant getPasswordChangedAt() {
+        return passwordChangedAt;
+    }
+    public void setPasswordChangedAt(Instant passwordChangedAt) {
+        this.passwordChangedAt = passwordChangedAt;
     }
 }

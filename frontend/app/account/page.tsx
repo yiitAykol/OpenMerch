@@ -6,7 +6,7 @@ import { useAuth } from "../context/AuthContext";
 import { useApi } from "../lib/useApi";
 
 export default function AccountPage() {
-  const { user, loading, logout } = useAuth();
+  const { user, loading, logout, replaceToken } = useAuth();
   const router = useRouter();
   const apiFetch = useApi();
 
@@ -44,7 +44,12 @@ export default function AccountPage() {
       const data = await res.json();
 
       if (res.ok) {
-        setPasswordMessage("Şifreniz başarıyla güncellendi!");
+        // Şifre değişince eski token'lar backend'de geçersizleşir; elimizdeki de
+        // onlardan biri. Yanıttaki taze token'ı yazmazsak bir sonraki istek 401 alır
+        // ve kullanıcı kendi yaptığı işlem yüzünden oturumdan düşerdi.
+        if (data.token) replaceToken(data.token);
+
+        setPasswordMessage(data.message || "Şifreniz başarıyla güncellendi!");
         setOldPassword("");
         setNewPassword("");
         // 2 saniye sonra formu kapat

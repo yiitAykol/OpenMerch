@@ -34,6 +34,7 @@ Bu doküman, Spring Boot ve Next.js kullanılarak geliştirilen "StackBootProjec
    - **Giriş (`/login`):** E-posta + şifre kontrolü. Hesap doğrulanmamışsa girişe izin verilmez, kullanıcı doğrulama ekranına yönlendirilir. Başarılı girişte **JWT token** döner.
    - **Oturum Yönetimi:** Token frontend'de `AuthContext` üzerinden `localStorage`'da tutulur. Sayfa yenilendiğinde `/api/auth/me` ile kullanıcı geri yüklenir. Header'da girişliyse kullanıcı adı + "Çıkış", değilse "Giriş / Üye Ol" gösterilir.
    - **Hesap Yönetimi (`/account`):** Şifre değiştirme (eski şifre doğrulamasıyla) ve hesabı kalıcı silme. Hesap silinirken kullanıcının sepeti ve favorileri de temizlenir.
+   - **Şifre Değişince Eski Oturumlar Kapanır:** Şifre değiştirildiğinde o andan önce üretilmiş **bütün** JWT'ler geçersizleşir; token'ı çalınmış bir kullanıcı şifresini değiştirerek hırsızı gerçekten dışarı atabilir. Kullanıcının kendi oturumu açık kalır — yanıtta taze bir token döner (bkz. *Token İptali*).
    - **Güvenlik:** REST API stateless çalışır (sunucuda session yok). Vitrin uç noktaları (ürün/kategori/banner **okuma**) herkese açıktır; sepet, favoriler ve hesap işlemleri geçerli JWT ister; yazma işlemleri `ADMIN` rolü ister.
    - **Deneme Limiti:** Kayıt, giriş, doğrulama ve kod tekrar gönderme uçları sınırsız denenemez; limit aşılınca `429 Too Many Requests` döner (bkz. *Deneme Limiti*).
 
@@ -167,6 +168,75 @@ Tarayıcının **Same-Origin Policy** kuralı gereği, bir sayfa başka bir orig
 > İleride çerez tabanlı bir refresh token eklenirse `allowCredentials` geri açılmalı — ve o gün `*` seçeneği kapanır.
 
 **Teşhisi zor olan hâli:** Frontend'i başka bir portta ya da bir sunucuda çalıştırırsan, backend hiçbir hata **loglamaz**; istek sunucuya ulaşır, işlenir, yanıt döner — yanıtı sayfaya vermeyen taraf tarayıcıdır. Belirti yalnızca tarayıcı konsolundaki bir CORS uyarısı ve boş görünen bir arayüzdür. `NEXT_PUBLIC_API_URL` tuzağının ikizidir; çözümü `CORS_ORIGINS`'i yeni adrese ayarlamaktır.
+
+---
+
+## 🔑 Token İptali (Şifre Değişince Eski Oturumları Kapatmak)
+
+JWT'nin doğası gereği bir sorunu vardır: **basıldıktan sonra geri alınamaz.** Sunucu token'ı imzalar ve unutur; token süresi dolana kadar (`app.jwt.expiration-ms`, varsayılan 24 saat) kendi başına geçerlidir. Bu, "oturum sunucuda tutulmuyor" avantajının doğrudan bedelidir.
+
+Bunun en can yakan hâli şifre değişimidir. Şifre değiştirmek çoğunlukla *"birisi hesabıma girmiş olabilir"* şüphesiyle yapılır — yani tam olarak işe yaraması gereken an. Oysa şifreyi değiştirmek dolaşımdaki token'lara hiçbir şey yapmaz: token'ı çalan kişi, kurban şifresini değiştirdikten sonra da 24 saat boyunca hesabı kullanmaya devam eder.
+
+### Çözüm: iptal listesi değil, bir zaman damgası
+
+Klasik çözüm bir **iptal listesi** (blacklist) tutmaktır: iptal edilen her token'ın id'si bir yere yazılır, her istekte oraya bakılır. Bu projede tercih edilmedi, çünkü her istekte ikinci bir depoya (Redis vb.) bakmak gerekir ve stateless olmanın anlamı kalmaz.
+
+Bunun yerine tek bir alan kullanılır: `User.passwordChangedAt`.
+
+> Token'ın **üretilme zamanı** (`iat` claim'i), kullanıcının **son şifre değişiminden önceyse** token reddedilir.
+
+Bu yaklaşımın bu projeye özellikle uyması tesadüf değil: `JwtAuthFilter` **zaten her istekte** `userRepository.findById(...)` ile kullanıcıyı okuyor (rolü oradan alıyor). Yani kontrol **ek bir sorgu maliyeti getirmiyor** — elimizdeki nesnede zaten duran bir alana bakıyoruz.
+
+Karşılığında verilen şey şudur: tek bir zaman damgası, o kullanıcının **bütün** eski token'larını aynı anda düşürür. Tek bir cihazı seçip atmak (ör. "şu telefondaki oturumu kapat") bu tasarımla yapılamaz; onun için token başına bir kimlik (`jti`) ve gerçek bir kayıt gerekir.
+
+### Akış
+
+```
+POST /api/auth/change-password
+   └─ eski şifre doğrulanır
+   └─ yeni şifre BCrypt ile hash'lenip yazılır
+   └─ passwordChangedAt = şimdi (saniyeye yuvarlanmış)
+   └─ TAZE bir token üretilip yanıtta dönülür
+
+Sonraki her istek → JwtAuthFilter
+   └─ jwtService.parse(token) → TokenInfo(userId, issuedAt)
+   └─ kullanıcı yüklenir
+   └─ passwordChangedAt != null && issuedAt < passwordChangedAt  →  kimlik YERLEŞTİRİLMEZ
+   └─ değilse normal akış
+```
+
+**Filtre isteği reddetmez, sadece kimliği yerleştirmez.** Karar Spring Security'nin: korumalı bir uçsa 401/403 döner, açık bir uçsa (`GET /api/products` gibi) istek anonim olarak geçer. Filtrenin içinden doğrudan 401 yazmak, geçersiz token taşıyan bir isteğin vitrini görmesini de engellerdi — oysa vitrin herkese açıktır.
+
+### `iat` saniye hassasiyetindedir — sessiz tuzak
+
+JWT standardı zaman claim'lerini **epoch saniyesi** (`NumericDate`) olarak saklar. `generateToken` içinde `new Date()` ile milisaniyeli bir an verilse bile token'a yazılırken **saniyeye aşağı yuvarlanır**; geri okunduğunda milisaniyesi her zaman `.000`'dır. `Instant.now()` ise mikrosaniye taşır. İkisi olduğu gibi karşılaştırılırsa:
+
+```
+Şifre değişti        → passwordChangedAt = 12:00:00.700
+Hemen ardından token → iat               = 12:00:00.000   (12:00:00.900'de üretildi, yuvarlandı)
+
+Kontrol: iat < passwordChangedAt  →  12:00:00.000 < 12:00:00.700  →  TRUE  →  reddedilir
+```
+
+Yani **yeni basılmış token anında ölür**. Kullanıcı bir saniye sonra tekrar dener ve çalışır — bu yüzden belirti "bazen giriş yapamıyorum" gibi rastgele görünür, izi sürülmesi zordur.
+
+Düzeltme karşılaştırmada değil **yazmada**: `passwordChangedAt` da saniyeye yuvarlanarak kaydedilir (`Instant.now().truncatedTo(ChronoUnit.SECONDS)`). O zaman `12:00:00.000 < 12:00:00.000` → `false`, taze token yaşar. Karşılaştırmanın `isBefore` (kesin küçüktür) olması da bu yüzdendir; `!isAfter` (`<=`) yazılırsa aynı hata geri gelir.
+
+Bedeli: şifre değişimiyle **aynı saniye içinde** üretilmiş eski bir token hayatta kalır. Saldırganın tam o saniyede token almış olması gerekir — kabul edilmiş bir takas.
+
+### Kullanıcı kendi kendini dışarı atmasın
+
+Kural "bu andan önceki tüm token'lar geçersiz" olduğu için, şifresini değiştiren kullanıcının **kendi elindeki token da** bu kapsama girer. Hiçbir şey yapılmazsa kişi kendi yaptığı işlem yüzünden oturumdan düşer.
+
+Bu yüzden `change-password` yanıtı taze bir `token` içerir; frontend `AuthContext.replaceToken(...)` ile onu yazar. Sonuç, kullanıcının beklediği davranıştır: *kendi oturumu açık kalır, diğer cihazlardaki (ve varsa hırsızdaki) oturumlar kapanır.*
+
+`replaceToken`, mevcut `persistSession`'dan ayrı bir fonksiyondur: `persistSession` yanıtta hem `token` hem `user` olmasını şart koşar, oysa şifre değişiminde kullanıcı bilgisi değişmez ve backend `user` göndermez — `persistSession` kullanılsaydı koşul tutmaz, **hiçbir şey yazılmaz** ve token sessizce eskimiş kalırdı.
+
+### Neyi kapsamıyor
+
+- **Yalnızca şifre değişimi** damgayı ilerletir. `logout` hâlâ tarayıcı tarafında token'ı silmekten ibarettir; o token teknik olarak süresi dolana kadar geçerlidir.
+- **Tekil cihaz iptali yok** (yukarıda anlatıldığı gibi, `jti` gerekirdi).
+- **Mevcut kullanıcılarda kolon `NULL`'dır** ve `null` "hiç değiştirilmemiş" demektir; onların token'ları etkilenmez. Filtredeki `changedAt != null` kontrolü bu yüzden şart — unutulursa ilk istekte `NullPointerException` alınır ve *herkes* dışarıda kalır.
 
 ---
 
@@ -329,7 +399,7 @@ Bean Validation **tek bir alanın kendi başına geçerliliğini** sorar. Şunla
 
 Backend tarafında JPA kullanılarak veritabanı tabloları ile nesneler eşleştirilmiştir:
 
-- **`User` (Kullanıcı):** Sisteme giriş yapan veya varsayılan kullanıcıları tutar (`id`, `username`, `email`, `password` (BCrypt hash), `enabled`, `role`, `verificationCode`, `verificationExpiry`). Hassas alanlar (`password`, `verificationCode`, `verificationExpiry`) `@JsonIgnore` ile API yanıtlarına sızmaz. `role` alanı `"USER"` veya `"ADMIN"` değerini alır, varsayılanı `"USER"`'dır.
+- **`User` (Kullanıcı):** Sisteme giriş yapan veya varsayılan kullanıcıları tutar (`id`, `username`, `email`, `password` (BCrypt hash), `enabled`, `role`, `verificationCode`, `verificationExpiry`, `passwordChangedAt`). Hassas alanlar (`password`, `verificationCode`, `verificationExpiry`, `passwordChangedAt`) `@JsonIgnore` ile API yanıtlarına sızmaz. `role` alanı `"USER"` veya `"ADMIN"` değerini alır, varsayılanı `"USER"`'dır. `passwordChangedAt` **bilerek nullable'dır** ve `columnDefinition` almaz: `null`, "şifre hiç değiştirilmemiş" demektir, böylece mevcut kullanıcıların token'ları etkilenmez ve kolon `ddl-auto=update` ile migration'sız eklenir (bkz. *Token İptali*).
 - **`Product` (Ürün):** Satışta olan ürünleri tutar (`id`, `name`, `description`, `price (BigDecimal)`, `imageUrl`, `category`, `stock (int)`). `stock` alanında `@ColumnDefault("0")` vardır: bu olmadan Hibernate kolonu `not null` olarak eklemeye çalışır, PostgreSQL ise **dolu bir tabloya varsayılansız NOT NULL kolon eklemeyi reddeder** ve `ddl-auto=update` açılışta patlar. `setStock` negatif değeri sıfıra çeker.
 - **`Category` (Kategori):** Ürün kategorilerinin listesi (`id`, `name` — unique). Ürünle ilişki metin üzerinden kurulur (`Product.category`), foreign key yoktur.
 - **`Banner` (Afiş):** Ana sayfa slider'ındaki görseller (`id`, `imageUrl`, `title`).
@@ -471,7 +541,7 @@ Erişim sütunu: 🌐 herkese açık · 🔑 giriş gerekir · 👑 `ADMIN` rol�
 | **POST** | `/api/auth/login` | 🌐 | E-posta + şifre ile giriş, JWT döner. Gövde: `{email, password}`. 10 dakikada 5 başarısız denemeden sonra 429. |
 | **POST** | `/api/auth/resend` | 🌐 | Doğrulama kodunu yeniden gönderir. Gövde: `{email}`. 10 dakikada en fazla 3 istek (429). |
 | **GET** | `/api/auth/me` | 🔑 | Token sahibinin bilgisini döner: `{id, username, email, role}`. |
-| **POST** | `/api/auth/change-password` | 🔑 | Şifre değiştirir. Gövde: `{oldPassword, newPassword}`. |
+| **POST** | `/api/auth/change-password` | 🔑 | Şifre değiştirir. Gövde: `{oldPassword, newPassword}`. Yanıt `{message, token}` — eski token'ların tamamı geçersizleşir, dönen taze token yazılmalıdır (bkz. *Token İptali*). |
 | **DELETE** | `/api/auth/delete-account` | 🔑 | Hesabı, sepetini ve favorilerini siler. |
 | **GET** | `/api/products` | 🌐 | Ürünleri **sayfalı** listeler. Parametreler: `page` (0 tabanlı), `size` (varsayılan 12, en fazla 100), `category` (verilmezse tümü), `minStock` / `maxStock` (stok aralığı, **iki uç da dahil**, verilmezse o uçta sınır yok). `minStock > maxStock` ise 400 + mesaj döner — sessizce boş liste dönmek, kullanıcıya filtreyi ters girdiğini değil elde ürün olmadığını sandırırdı. Yanıt: `{content: [...], page: {size, number, totalElements, totalPages}}`. |
 | **GET** | `/api/products/{id}` | 🌐 | Tek ürünü getirir. |
@@ -604,9 +674,7 @@ Dürüst kalsın diye not düşülmüştür; henüz **kapatılmamıştır**:
 1. **Deneme limiti tek sunucuya özeldir:** Sayaçlar uygulama belleğinde tutuluyor. Uygulama yeniden başlayınca sıfırlanıyorlar, birden çok kopya çalıştırılırsa her kopya kendi sayacını tuttuğu için gerçek limit kopya sayısıyla çarpılıyor. Ortak bir sayaç (Redis vb.) gerekir.
 2. **Login limiti kilitlemeye açık:** Anahtar e-posta olduğu için, adresini bilen biri 5 yanlış denemeyle bir kullanıcıyı 10 dakika girişten alıkoyabilir. Bilinen bir takas: IP anahtarı ise aynı ağdaki herkesi tek kovaya sokardı.
 
-**Hata yönetimi / veri bütünlüğü**
-
-3. **Şifre değişince eski token'lar geçerli kalıyor:** JWT'de iptal (revocation) mekanizması yok; şifresini değiştiren kullanıcının önceki token'ı süresi dolana kadar çalışmaya devam eder.
+3. **Oturum kapatma (logout) hâlâ yalnızca tarayıcı tarafındadır:** `logout()` token'ı `localStorage`'dan siler, ama o token süresi dolana kadar teknik olarak geçerli kalır. Şifre değişimi artık eski token'ları düşürüyor (bkz. *Token İptali*), fakat "sadece çıkış yap" bunu tetiklemez. Tekil cihaz iptali de yoktur; onun için token başına bir kimlik (`jti`) ve gerçek bir kayıt gerekir.
 
 **Kod kalitesi**
 
@@ -624,6 +692,7 @@ Dürüst kalsın diye not düşülmüştür; henüz **kapatılmamıştır**:
    ```
 
 > **Kapatılanlar:**
+> - **Şifre değişince eski token'lar artık geçersizleşiyor.** `User.passwordChangedAt` alanı eklendi; `JwtAuthFilter` token'ın `iat`'ını bu damgayla karşılaştırıyor (bkz. *Token İptali*). Yol boyunca öğrenilenler: (1) **`iat` epoch SANİYESİ tutar** — `Instant.now()`'ın milisaniyeleriyle karşılaştırılırsa şifre değişiminden hemen sonra üretilen **taze** token da reddedilir; belirti "bazen giriş yapamıyorum" gibi rastgele görünen, izi zor sürülen bir hatadır. Düzeltme karşılaştırmada değil yazmada: damga da saniyeye yuvarlanır. (2) Filtre isteği **reddetmemeli**, yalnızca kimliği yerleştirmemelidir; içeriden 401 yazmak geçersiz token taşıyan bir isteğin herkese açık vitrini görmesini de engellerdi. (3) `extractUserId` yerine tek parse'tan iki bilgi dönen `parse` + `TokenInfo` record'u yazıldı — ikinci bir `extractIssuedAt` metodu her istekte HMAC imzasını iki kez doğrulatırdı; `Claims`'i doğrudan dışarı vermek ise jjwt bağımlılığını `JwtService` dışına sızdırırdı. (4) Kural kullanıcının **kendi** token'ını da kapsar, o yüzden yanıtta taze bir token dönülür — yoksa şifresini değiştiren herkes kendi kendini oturumdan atardı. (5) Frontend'de `persistSession` bu iş için kullanılamazdı: `token` **ve** `user`'ın birlikte gelmesini şart koşuyor, şifre değişiminde ise `user` gönderilmiyor — koşul sessizce tutmaz ve token hiç yazılmazdı; ayrı bir `replaceToken` eklendi.
 > - **Admin stok yönetimi ekranı eklendi (`/admin/stock`).** Stok zaten vardı ama düzeltmenin tek yolu ürün düzenleme formuydu: tek bir sayıyı değiştirmek için adı, açıklamayı, fiyatı, görseli ve kategoriyi de içeren bir `PUT` göndermek gerekiyordu — yani stok düzeltmek, farkında olmadan **başka alanları da yeniden yazmak** demekti. Yeni ekran alfabetik listeler, stok aralığına göre filtreler (hazır kovalar + serbest `min–max`) ve satır içinde düzeltir. Yol boyunca öğrenilenler: (1) **Stoğu mutlak değerle yazmak sessiz bir veri kaybıdır** — admin 10 görüp 10 yazarken araya giren satış silinir; fark yazmak kararı tarayıcıdan veritabanına taşır (bkz. *Stok düzeltmesi neden mutlak değer değil, fark*). (2) `@Modifying` sorgusu doğrudan veritabanına gider ve persistence context'i güncellemez; aynı transaction içinde ürün önce `findById` ile yüklenmişse güncellemeden **sonraki** okuma eski stoğu döner. Çözüm varlık kontrolünü `existsById` ile yapmaktı — `@Modifying(clearAutomatically = true)` da işe yarardı ama sorgu paylaşıldığı için `checkout` sırasında inşa edilen `Order` nesnesini detach ederdi. (3) İsteğe bağlı filtre parametreleri `int` değil **`Integer`** olmalı: `int` olsaydı parametre hiç gelmediğinde `0` sayılır ve `maxStock=0` anlamına gelirdi — vitrin ana sayfası sessizce yalnızca tükenmiş ürünleri gösterirdi. (4) Kategori + alt sınır + üst sınırın üçü de isteğe bağlı olunca sorguya `null` taşımak sekiz kombinasyon demekti; "sınır yok" durumunu controller'da en geniş değere çevirmek (`0` … `Integer.MAX_VALUE`) `null`'ı sorgudan tamamen çıkardı ve türetilmiş metotlar yetti.
 > - **`/api/products` sayfalandı.** `findAll()` tüm tabloyu her istekte döndürüyordu (bkz. *Sayfalama*). Yol boyunca öğrenilenler: (1) Sıralamasız sayfalama sessizce bozuktur — `sort` verilmezse sayfalar arasında ürün tekrarlanabilir veya kaybolabilir. (2) `size` üst sınırı konmazsa sayfalama sadece bir parametre arkasına saklanmış olur. (3) Sayfalama, kategori filtresini de sunucuya taşımayı **zorunlu** kılar; tarayıcı artık listenin tamamını görmüyor. (4) `admin/edit/[id]` sayfasının tüm listeyi indirip `.find()` yapması bu iş sırasında ortaya çıktı — sayfalamadan bağımsız olarak da yanlıştı.
 > - **Girdi doğrulama Bean Validation'a taşındı.** `spring-boot-starter-validation` pom'da duruyordu ama projede tek bir `@Valid` yoktu; doğrulamalar controller içinde elle yazılmış `if`'lerdi ve e-posta formatı **hiç** kontrol edilmiyordu (`"asdf"` geçerli sayılıyor, doğrulama kodu hiçbir yere gitmiyordu). Auth, checkout, sepet ve admin durum uçlarındaki DTO'lar işaretlendi (bkz. *Girdi Doğrulama*). Yol boyunca öğrenilenler: (1) Anotasyon koymak yetmez, parametrede `@Valid` yoksa kural sessizce çalışmaz. (2) Doğrulamayı eklemek, `GlobalExceptionHandler` yazılmadan hata mesajlarını **kötüleştirir** — Spring'in varsayılan 400 gövdesinde `message` alanı yoktur, frontend ise her yerde onu okur. (3) Her `if` anotasyona çevrilemez: alanlar arası bağımlılıklar ve sabitten kurulan mesajlar elle kalmalıdır.

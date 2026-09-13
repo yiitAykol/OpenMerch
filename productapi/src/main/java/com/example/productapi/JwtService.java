@@ -8,6 +8,7 @@ import org.springframework.stereotype.Service;
 
 import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.util.Date;
 
 @Service
@@ -38,15 +39,23 @@ public class JwtService {
                 .compact();
     }
 
-    // Token'ı doğrular ve içindeki userId'yi döner; geçersizse null.
-    public Long extractUserId(String token) {
+    // Token'dan çıkarılan bilgiler. jjwt'nin Claims tipi bu sınıfın dışına sızmasın diye
+    // ayrı bir taşıyıcıyla dönülür; böylece jjwt'yi bilen tek yer JwtService kalır.
+    public record TokenInfo(Long userId, Instant issuedAt) {}
+
+    // Token'ı doğrular ve içindekileri döner; geçersizse null.
+    // DİKKAT: issuedAt (iat) JWT'de epoch SANİYESİ olarak saklanır, yani milisaniyesi
+    // her zaman .000'dır. Bir Instant ile karşılaştıran taraf bunu hesaba katmalıdır.
+    public TokenInfo parse(String token) {
         try {
             Claims claims = Jwts.parser()
                     .verifyWith(key)
                     .build()
                     .parseSignedClaims(token)
                     .getPayload();
-            return Long.valueOf(claims.getSubject());
+            return new TokenInfo(
+                    Long.valueOf(claims.getSubject()),
+                    claims.getIssuedAt().toInstant());
         } catch (Exception e) {
             return null;
         }
