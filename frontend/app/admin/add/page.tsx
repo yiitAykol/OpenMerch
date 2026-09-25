@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import styles from "../admin.module.scss";
-import { useApi } from "../../lib/useApi";
+import { useApi } from "@/lib/useApi";
 
 type Category = { id: number; name: string };
 

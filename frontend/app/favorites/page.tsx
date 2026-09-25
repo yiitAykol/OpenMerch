@@ -1,28 +1,28 @@
 "use client";
 import { useState, useEffect } from "react";
-import ProductCard from "../components/ProductCard";
+import ProductCard, { type Product } from "@/components/ProductCard";
 import styles from "../page.module.scss";
-import { useAuth } from "../context/AuthContext";
-import { useApi } from "@/app/lib/useApi";
+import { useAuth } from "@/context/AuthContext";
+import { useApi } from "@/lib/useApi";
+
+type Favorite = { id: number; product: Product };
 
 export default function FavoritesPage() {
   // 1. önce state
-  const [favorites, setFavorites] = useState<any[]>([]);
+  const [favorites, setFavorites] = useState<Favorite[]>([]);
   const { user, loading } = useAuth();
   const apiFetch = useApi();
   // 2. sonra effect (veriyi çeker) — giriş yapan kullanıcının favorileri
   useEffect(() => {
-    if (!user) {
-      setFavorites([]);
-      return;
-    }
+    // Giriş yoksa çekecek bir şey yok; aşağıdaki erken return listeyi zaten gizler.
+    if (!user) return;
     async function load() {
       const res = await apiFetch(`/api/favorites`);
       const data = await res.json();
       setFavorites(data);
     }
     load();
-  }, [user]);
+  }, [user, apiFetch]);
 
   async function handleRemove(favoriteId: number) {
     await apiFetch(`/api/favorites/${favoriteId}`, {

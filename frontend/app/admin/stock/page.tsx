@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import styles from "../admin.module.scss";
-import { useApi } from "../../lib/useApi";
+import { useApi } from "@/lib/useApi";
 
 type Product = {
   id: number;
@@ -62,45 +62,44 @@ export default function AdminStockPage() {
   const [maxDraft, setMaxDraft] = useState("");
   const [filterError, setFilterError] = useState<string | null>(null);
 
-  const fetchProducts = async (pageToLoad: number, active: typeof range) => {
-    try {
-      const params = new URLSearchParams();
-      params.set("page", String(pageToLoad));
-      params.set("size", String(PAGE_SIZE));
-      // Sınır yoksa parametre hiç GÖNDERİLMEZ. Boş string göndermek olmazdı:
-      // backend'de Integer alanına boş değer bağlanamaz ve istek 400 dönerdi.
-      if (active.min !== null) params.set("minStock", String(active.min));
-      if (active.max !== null) params.set("maxStock", String(active.max));
-
-      const res = await apiFetch(`/api/products?${params.toString()}&${SORT}`);
-      if (res.ok) {
-        const data = await res.json();
-        setProducts(data.content);
-        setTotalPages(data.page.totalPages);
-        setTotalElements(data.page.totalElements);
-      } else {
-        let message = "Ürünler getirilemedi.";
-        try {
-          const data = await res.json();
-          if (data?.message) message = data.message;
-        } catch {
-          // Gövdesiz yanıt — varsayılan mesajla devam.
-        }
-        setFilterError(message);
-        setProducts([]);
-        setTotalPages(0);
-        setTotalElements(0);
-      }
-    } catch (error) {
-      console.error("Ürünler getirilirken hata:", error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   useEffect(() => {
-    fetchProducts(page, range);
-  }, [page, range]);
+    async function fetchProducts() {
+      try {
+        const params = new URLSearchParams();
+        params.set("page", String(page));
+        params.set("size", String(PAGE_SIZE));
+        // Sınır yoksa parametre hiç GÖNDERİLMEZ. Boş string göndermek olmazdı:
+        // backend'de Integer alanına boş değer bağlanamaz ve istek 400 dönerdi.
+        if (range.min !== null) params.set("minStock", String(range.min));
+        if (range.max !== null) params.set("maxStock", String(range.max));
+
+        const res = await apiFetch(`/api/products?${params.toString()}&${SORT}`);
+        if (res.ok) {
+          const data = await res.json();
+          setProducts(data.content);
+          setTotalPages(data.page.totalPages);
+          setTotalElements(data.page.totalElements);
+        } else {
+          let message = "Ürünler getirilemedi.";
+          try {
+            const data = await res.json();
+            if (data?.message) message = data.message;
+          } catch {
+            // Gövdesiz yanıt — varsayılan mesajla devam.
+          }
+          setFilterError(message);
+          setProducts([]);
+          setTotalPages(0);
+          setTotalElements(0);
+        }
+      } catch (error) {
+        console.error("Ürünler getirilirken hata:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+    fetchProducts();
+  }, [page, range, apiFetch]);
 
   // Uygulanmış filtre hangi kovaya denk geliyor? Hiçbirine uymuyorsa serbest aralıktır.
   const activeBucket =

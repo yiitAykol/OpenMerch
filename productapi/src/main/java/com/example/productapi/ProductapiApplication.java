@@ -1,5 +1,14 @@
 package com.example.productapi;
 
+import com.example.productapi.entity.Cart;
+import com.example.productapi.entity.Category;
+import com.example.productapi.entity.Product;
+import com.example.productapi.entity.User;
+import com.example.productapi.repository.CartRepository;
+import com.example.productapi.repository.CategoryRepository;
+import com.example.productapi.repository.ProductRepository;
+import com.example.productapi.repository.UserRepository;
+
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;

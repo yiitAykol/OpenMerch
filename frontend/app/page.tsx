@@ -1,20 +1,47 @@
 "use client";
-import { useState, useEffect, useRef } from "react";
-import ProductCard from "./components/ProductCard"
-import { useAuth } from "./context/AuthContext";
-import { useApi } from "@/app/lib/useApi";
+import { useState, useEffect, useRef, useCallback } from "react";
+import ProductCard, { type Product } from "@/components/ProductCard"
+import { useAuth } from "@/context/AuthContext";
+import { useApi } from "@/lib/useApi";
 // importlar buraya (useState, useEffect)
 import styles from "./page.module.scss";
 const tabColors = ["#e4ddddff", "#d5e3eeff", "#e3ece4ff", "#f0ebe4ff", "#e1cdefff", "#d5e9e8ff"];
 // Bir sayfada gösterilecek ürün sayısı. Backend'in varsayılanı da 12.
 const PAGE_SIZE = 12;
 
+// Backend'in sayfalı yanıtı: { content: [...], page: {...} }
+type ProductPage = {
+  content: Product[];
+  page: { number: number; totalPages: number; totalElements: number };
+};
+
+// Ürünlerin bir sayfasını çeker; state'e dokunmaz, sadece veriyi döndürür.
+//
+// Kategori filtresi artık sunucuda: liste sayfalı olduğu için tarayıcı
+// ürünlerin tamamını görmüyor, burada filtrelemek yanlış sonuç verirdi.
+async function fetchProductPage(pageToLoad: number, category: string): Promise<ProductPage | null> {
+  const params = new URLSearchParams({
+    page: String(pageToLoad),
+    size: String(PAGE_SIZE),
+  });
+  if (category !== "all") params.set("category", category);
+
+  const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/products?${params}`);
+  return res.ok ? res.json() : null;
+}
+
 export default function Home() {
   // state buraya
   //const [products, setProducts] = useState([]);
-  const [products, setProducts] = useState<any[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
   // Kategorileri backend'den ayrı çekiyoruz (boş kategoriler de görünsün)
   const [categories, setCategories] = useState<string[]>([]);
+  // Sekmelerdeki ürün sayıları. Backend'den gelir: liste sayfalı olduğu için
+  // tarayıcıdaki products tüm ürünleri içermez, oradan saymak yanlış sonuç verir.
+  const [categoryCounts, setCategoryCounts] = useState<{ total: number; byCategory: Record<string, number> }>({
+    total: 0,
+    byCategory: {},
+  });
   // Ana sayfa banner'ları
   const [banners, setBanners] = useState<{ id: number; imageUrl: string; title: string | null }[]>([]);
   // productId -> favoriteId eşlemesi (yıldızların dolu başlaması için)
@@ -77,28 +104,28 @@ export default function Home() {
     }
   };
 
-  // Ürünlerin bir sayfasını çeker. append=true ise mevcut listenin altına ekler
+  // Gelen sayfayı ekrana yansıtır. append=true ise mevcut listenin altına ekler
   // ("Daha fazla göster"), false ise listeyi baştan kurar (kategori değişimi).
-  //
-  // Kategori filtresi artık sunucuda: liste sayfalı olduğu için tarayıcı
-  // ürünlerin tamamını görmüyor, burada filtrelemek yanlış sonuç verirdi.
-  const loadProducts = async (pageToLoad: number, category: string, append: boolean) => {
+  // Sadece state setter'larını kullandığı için useCallback ile sabit tutulabiliyor.
+  const showPage = useCallback((data: ProductPage, append: boolean) => {
+    setProducts((current) => (append ? [...current, ...data.content] : data.content));
+    setPage(data.page.number);
+    setTotalPages(data.page.totalPages);
+    setTotalElements(data.page.totalElements);
+  }, []);
+
+  // Aynı sekmeye tekrar tıklamak effect'i tetiklemez; yükleniyor bayrağı açık kalmasın.
+  const selectCategory = (category: string) => {
+    if (category === selectedCategory) return;
+    setIsLoadingProducts(true);
+    setSelectedCategory(category);
+  };
+
+  const loadMore = async () => {
     setIsLoadingProducts(true);
     try {
-      const params = new URLSearchParams({
-        page: String(pageToLoad),
-        size: String(PAGE_SIZE),
-      });
-      if (category !== "all") params.set("category", category);
-
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/products?${params}`);
-      if (!res.ok) return;
-
-      const data = await res.json();
-      setProducts((current) => (append ? [...current, ...data.content] : data.content));
-      setPage(data.page.number);
-      setTotalPages(data.page.totalPages);
-      setTotalElements(data.page.totalElements);
+      const data = await fetchProductPage(page + 1, selectedCategory);
+      if (data) showPage(data, true);
     } catch (error) {
       console.error("Ürünler getirilirken hata:", error);
     } finally {
@@ -106,32 +133,41 @@ export default function Home() {
     }
   };
 
-  // Kategori / banner herkese açık — bir kez yüklenir.
+  // Kategori / banner / sayılar herkese açık — bir kez yüklenir.
   useEffect(() => {
     async function load() {
-      const [categoriesRes, bannersRes] = await Promise.all([
+      const [categoriesRes, bannersRes, countsRes] = await Promise.all([
         fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/categories`),
         fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/banners`),
+        fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/products/category-counts`),
       ]);
       const categoryData = await categoriesRes.json();
       // Backend {id, name} döndürüyor; sadece isimleri alıyoruz
       setCategories(categoryData.map((c: { name: string }) => c.name));
       setBanners(await bannersRes.json());
+      if (countsRes.ok) setCategoryCounts(await countsRes.json());
     }
     load();
   }, []);
 
   // Kategori değiştiğinde ilk sayfadan başla ve listeyi sıfırla.
   useEffect(() => {
-    loadProducts(0, selectedCategory, false);
-  }, [selectedCategory]);
+    async function loadFirstPage() {
+      try {
+        const data = await fetchProductPage(0, selectedCategory);
+        if (data) showPage(data, false);
+      } catch (error) {
+        console.error("Ürünler getirilirken hata:", error);
+      } finally {
+        setIsLoadingProducts(false);
+      }
+    }
+    loadFirstPage();
+  }, [selectedCategory, showPage]);
 
   // Favoriler kullanıcıya özel — giriş/çıkışta yıldızları güncelle.
   useEffect(() => {
-    if (!user || !token) {
-      setFavMap({});
-      return;
-    }
+    if (!user || !token) return;
     async function loadFavorites() {
       const res = await apiFetch(`/api/favorites`, {
       });
@@ -143,7 +179,7 @@ export default function Home() {
       setFavMap(map);
     }
     loadFavorites();
-  }, [user]);
+  }, [user, token, apiFetch]);
 
   // Kategoriler yüklendiğinde / pencere boyutu değiştiğinde okları güncelle
   useEffect(() => {
@@ -178,20 +214,21 @@ export default function Home() {
           {/* Hepsini gösteren sekme */}
           <button
             className={`${styles.tab} ${selectedCategory === "all" ? styles.active : ""}`}
-            onClick={() => setSelectedCategory("all")}
+            onClick={() => selectCategory("all")}
           >
-            Ürünler ({products.length})
+            Ürünler ({categoryCounts.total})
           </button>
 
           {/* Kategori sekmeleri */}
           {categories.map((cat, index) => {
-            const count = products.filter((p) => p.category === cat).length;
+            // Hiç ürünü olmayan kategori backend yanıtında yer almaz → 0.
+            const count = categoryCounts.byCategory[cat] ?? 0;
             return (
               <button
                 key={cat}
                 className={`${styles.tab} ${selectedCategory === cat ? styles.active : ""}`}
                 style={{ borderColor: tabColors[index % tabColors.length] }}
-                onClick={() => setSelectedCategory(cat)}
+                onClick={() => selectCategory(cat)}
               >
                 {cat} ({count})
               </button>
@@ -214,7 +251,6 @@ export default function Home() {
           >
             {banners.map((b) => (
               <div className={styles.slide} key={b.id}>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={b.imageUrl} alt={b.title ?? ""} />
                 {b.title && <h2>{b.title}</h2>}
               </div>
@@ -251,7 +287,7 @@ export default function Home() {
 
       <div className={styles.grid}>
         {products.map((product) => (
-          <ProductCard key={product.id} product={product} favoriteId={favMap[product.id] ?? null} />
+          <ProductCard key={product.id} product={product} favoriteId={user ? favMap[product.id] ?? null : null} />
         ))}
       </div>
 
@@ -260,7 +296,7 @@ export default function Home() {
       {page < totalPages - 1 && (
         <div style={{ textAlign: "center", margin: "2rem 0 3rem" }}>
           <button
-            onClick={() => loadProducts(page + 1, selectedCategory, true)}
+            onClick={loadMore}
             disabled={isLoadingProducts}
             style={{
               padding: "0.75rem 2rem",

@@ -2,24 +2,27 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { useCart } from "../../context/CartContext";
-import { useAuth } from "../../context/AuthContext";
+import { useCart } from "@/context/CartContext";
+import { useAuth } from "@/context/AuthContext";
 import styles from "./page.module.scss";
-import { useApi } from "@/app/lib/useApi";
+import { useApi } from "@/lib/useApi";
+import type { Product } from "@/components/ProductCard";
 
 export default function ProductDetailPage() {
     const params = useParams();
     const productId = params.id;
 
-    const [product, setProduct] = useState<any>(null);
+    const [product, setProduct] = useState<Product | null>(null);
     const [loading, setLoading] = useState(true);
     // Bu ürünün favori kaydının id'si. null ise favoride değil.
-    const [favId, setFavId] = useState<number | null>(null);
+    const [storedFavId, setFavId] = useState<number | null>(null);
 
     // Gerçek sepet ve kullanıcı bilgisi için context'leri çekiyoruz
     const { addToCart } = useCart();
     const { user } = useAuth();
     const apiFetch = useApi();
+    // Çıkış yapılınca yıldız boş görünsün; saklanan değer bir sonraki yüklemede yenilenir.
+    const favId = user ? storedFavId : null;
 
     useEffect(() => {
         async function fetchProduct() {
@@ -39,28 +42,27 @@ export default function ProductDetailPage() {
         if (productId) {
             fetchProduct();
         }
-    }, [productId]);
+    }, [productId, apiFetch]);
 
     // Kullanıcı veya ürün değişince: bu ürün favorilerde mi?
     useEffect(() => {
-        if (!user || !product) {
-            setFavId(null);
-            return;
-        }
+        if (!user || !product) return;
+        const currentProductId = product.id;
         async function loadFavoriteState() {
             const res = await apiFetch("/api/favorites");
             if (!res.ok) return;
             const data = await res.json();
             const match = data.find(
-                (f: { id: number; product: { id: number } }) => f.product.id === product.id
+                (f: { id: number; product: { id: number } }) => f.product.id === currentProductId
             );
             setFavId(match ? match.id : null);
         }
         loadFavoriteState();
-    }, [user, product]);
+    }, [user, product, apiFetch]);
 
     // Favoriye ekle / favoriden çıkar (duruma göre)
     const handleFavorite = async () => {
+        if (!product) return;
         if (!user) {
             window.dispatchEvent(new Event("loginRequired"));
             return;

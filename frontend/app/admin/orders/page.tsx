@@ -3,14 +3,14 @@
 import { Fragment, useEffect, useState } from "react";
 import Link from "next/link";
 import styles from "../admin.module.scss";
-import { useApi } from "../../lib/useApi";
+import { useApi } from "@/lib/useApi";
 import {
   OrderType,
   ORDER_STATUS_OPTIONS,
   formatDate,
   formatPrice,
   statusLabel,
-} from "../../lib/orders";
+} from "@/lib/orders";
 
 export default function AdminOrdersPage() {
   const apiFetch = useApi();
@@ -22,22 +22,21 @@ export default function AdminOrdersPage() {
   // Durumu güncellenmekte olan sipariş; çift tıklamayı engeller.
   const [savingId, setSavingId] = useState<number | null>(null);
 
-  const fetchOrders = async () => {
-    try {
-      const res = await apiFetch("/api/admin/orders");
-      if (res.ok) {
-        setOrders(await res.json());
-      }
-    } catch (error) {
-      console.error("Siparişler getirilirken hata:", error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   useEffect(() => {
+    async function fetchOrders() {
+      try {
+        const res = await apiFetch("/api/admin/orders");
+        if (res.ok) {
+          setOrders(await res.json());
+        }
+      } catch (error) {
+        console.error("Siparişler getirilirken hata:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    }
     fetchOrders();
-  }, []);
+  }, [apiFetch]);
 
   const handleStatusChange = async (id: number, status: string) => {
     setSavingId(id);

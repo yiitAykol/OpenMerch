@@ -3,9 +3,9 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { useAuth } from "../context/AuthContext";
-import { useApi } from "../lib/useApi";
-import { OrderType, formatDate, formatPrice, statusLabel } from "../lib/orders";
+import { useAuth } from "@/context/AuthContext";
+import { useApi } from "@/lib/useApi";
+import { OrderType, formatDate, formatPrice, statusLabel } from "@/lib/orders";
 import styles from "./orders.module.scss";
 
 export default function OrdersPage() {
@@ -39,7 +39,7 @@ export default function OrdersPage() {
     }
 
     fetchOrders();
-  }, [user]);
+  }, [user, apiFetch]);
 
   if (loading || !user || orders === null) {
     return <div className={styles.info}>Yükleniyor...</div>;

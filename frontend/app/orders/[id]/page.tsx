@@ -3,9 +3,9 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { useAuth } from "../../context/AuthContext";
-import { useApi } from "../../lib/useApi";
-import { OrderType, canCancel, formatDate, formatPrice, statusLabel } from "../../lib/orders";
+import { useAuth } from "@/context/AuthContext";
+import { useApi } from "@/lib/useApi";
+import { OrderType, canCancel, formatDate, formatPrice, statusLabel } from "@/lib/orders";
 import styles from "../orders.module.scss";
 
 export default function OrderDetailPage() {
@@ -57,7 +57,7 @@ export default function OrderDetailPage() {
     }
 
     fetchOrder();
-  }, [user, orderId]);
+  }, [user, orderId, apiFetch]);
 
   const handleCancel = async () => {
     setCancelError("");

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import styles from "./admin.module.scss";
-import { useApi } from "../lib/useApi";
+import { useApi } from "@/lib/useApi";
 
 type Product = {
   id: number;
@@ -23,28 +23,29 @@ export default function AdminPage() {
   const [page, setPage] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
   const [totalElements, setTotalElements] = useState(0);
+  // Aynı sayfayı yeniden çekmek için artırılan sayaç (ör. silme sonrası).
+  const [reloadKey, setReloadKey] = useState(0);
   const apiFetch = useApi();
 
-  const fetchProducts = async (pageToLoad: number) => {
-    try {
-      const res = await apiFetch(`/api/products?page=${pageToLoad}&size=${PAGE_SIZE}`);
-      if (res.ok) {
-        // Yanıt artık düz dizi değil: { content: [...], page: {...} }
-        const data = await res.json();
-        setProducts(data.content);
-        setTotalPages(data.page.totalPages);
-        setTotalElements(data.page.totalElements);
-      }
-    } catch (error) {
-      console.error("Ürünler getirilirken hata:", error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   useEffect(() => {
-    fetchProducts(page);
-  }, [page]);
+    async function fetchProducts() {
+      try {
+        const res = await apiFetch(`/api/products?page=${page}&size=${PAGE_SIZE}`);
+        if (res.ok) {
+          // Yanıt artık düz dizi değil: { content: [...], page: {...} }
+          const data = await res.json();
+          setProducts(data.content);
+          setTotalPages(data.page.totalPages);
+          setTotalElements(data.page.totalElements);
+        }
+      } catch (error) {
+        console.error("Ürünler getirilirken hata:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+    fetchProducts();
+  }, [page, reloadKey, apiFetch]);
 
   const handleDelete = async (id: number) => {
     if (!window.confirm("Bu ürünü silmek istediğinize emin misiniz?")) {
@@ -63,7 +64,7 @@ export default function AdminPage() {
         if (products.length === 1 && page > 0) {
           setPage(page - 1);
         } else {
-          fetchProducts(page);
+          setReloadKey((key) => key + 1);
         }
       } else {
         alert("Silme işlemi başarısız oldu.");
@@ -90,7 +91,7 @@ export default function AdminPage() {
             Siparişler
           </Link>
           <Link href="/admin/banners" className={styles.addButton}>
-            Banner'lar
+            Banner&apos;lar
           </Link>
           <Link href="/admin/categories" className={styles.addButton}>
             Kategoriler

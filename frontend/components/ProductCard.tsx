@@ -1,0 +1,154 @@
+"use client";
+
+import { useState } from "react";
+import Link from "next/link";
+import styles from "./ProductCard.module.scss";
+import { useCart } from "@/context/CartContext";
+import { useAuth } from "@/context/AuthContext";
+import { useApi } from "@/lib/useApi";
+
+// 1. BURAYA PRODUCT TİPİNİ EKLİYORUZ
+export interface Product {
+    id: number;
+    name: string;
+    description: string;
+    price: number;
+    imageUrl: string;
+    category: string; // Kategori alanımız
+    stock: number;
+}
+
+export default function ProductCard({ product, isFavorite, onRemove, favoriteId }: { product: Product; isFavorite?: boolean; onRemove?: () => void; favoriteId?: number | null; }) {
+    // Bu ürünün favori kaydının id'si (null ise favoride değil). Sayfa yenilenince
+    // ana sayfadan gelen favoriteId ile dolu başlar, böylece yıldız kalıcı olur.
+    const [favId, setFavId] = useState<number | null>(favoriteId ?? null);
+
+    // Ana sayfa favorileri geç yüklerse (prop sonradan gelirse) senkronla.
+    // Effect yerine render sırasında yapılıyor: effect'te yapılsaydı önce eski
+    // değerle bir render, sonra düzeltme için ikinci bir render olurdu.
+    const [prevFavoriteId, setPrevFavoriteId] = useState(favoriteId);
+    if (favoriteId !== prevFavoriteId) {
+        setPrevFavoriteId(favoriteId);
+        setFavId(favoriteId ?? null);
+    }
+
+    // Yıldız dolu mu? Favoriler sayfasında isFavorite ile, ana sayfada favId ile.
+    const isFav = isFavorite || favId !== null;
+
+    const { addToCart, cart } = useCart();
+    const { user } = useAuth();
+    const apiFetch = useApi();
+
+    // Bu ürünün sepette kaç adet olduğu (her eklemede otomatik artar)
+    const qtyInCart = cart?.items.find((i) => i.product.id === product.id)?.quantity ?? 0;
+
+    // Stok bitmişse sepete ekleme yolu kapanır. Bu bir kolaylıktır, güvenlik
+    // değil: backend hem sepete eklerken hem de siparişte ayrıca kontrol eder.
+    const isOutOfStock = product.stock <= 0;
+
+    async function handleStarClick() {
+        // Favoriler sayfasındaysak (onRemove verilmişse) tıklayınca favoriden çıkar
+        if (isFavorite && onRemove) {
+            onRemove();
+            return;
+        }
+
+        // Zaten favorideyse → favoriden çıkar (kayıt id'siyle sil)
+        if (favId !== null) {
+            const res = await apiFetch(`/api/favorites/${favId}`, {
+                method: "DELETE",
+            });
+            if (res.ok) {
+                setFavId(null);
+                window.dispatchEvent(new Event("favoriteAdded"));
+            }
+            return;
+        }
+
+        // Favoride değilse → favoriye ekle (giriş zorunlu)
+        if (!user) {
+            window.dispatchEvent(new Event("loginRequired"));
+            return;
+        }
+        const res = await apiFetch(`/api/favorites`, {
+            method: "POST",
+            body: JSON.stringify({ productId: product.id }),
+        });
+        if (res.ok) {
+            const data = await res.json();
+            setFavId(data.id);
+            window.dispatchEvent(new Event("favoriteAdded"));
+        } else {
+            console.log("favori eklenemedi");
+        }
+    }
+
+    return (
+        <div className={styles.card}>
+            <div className={styles.imageWrap}>
+
+                {/* {product.imageUrl && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={product.imageUrl} alt={product.name} className={styles.image} />
+                )} */}
+                <Link href={`/products/${product.id}`}>
+                    {product.imageUrl && (
+                        <img src={product.imageUrl} alt={product.name} className={styles.image} />
+                    )}
+                </Link>
+
+                {/* Sağ üstte yıldız: tıklayınca favoriye ekler, içi sarı dolar */}
+                <button
+                    className={`${styles.starButton} ${isFav ? styles.starActive : ""}`}
+                    onClick={handleStarClick}
+                    aria-label={isFav ? "Favoriden çıkar" : "Favoriye ekle"}
+                >
+                    <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+                        <path
+                            d="M12 2.5l2.9 5.9 6.5.95-4.7 4.58 1.11 6.47L12 17.9 6.19 20.9l1.11-6.47-4.7-4.58 6.5-.95L12 2.5z"
+                            fill={isFav ? "#facc15" : "none"}
+                            stroke={isFav ? "#eab308" : "#555"}
+                            strokeWidth="1.6"
+                            strokeLinejoin="round"
+                        />
+                    </svg>
+                </button>
+
+                {/* Stok bitmişse görselin üstüne şerit */}
+                {isOutOfStock && <div className={styles.outOfStockBadge}>Tükendi</div>}
+
+                {/* Sağ altta sepete ekle: minimal ikon buton + adet sayısı */}
+                {!isFavorite && (
+                    <button
+                        className={styles.cartButton}
+                        onClick={() => addToCart(product.id, 1)}
+                        disabled={isOutOfStock}
+                        aria-label={isOutOfStock ? "Ürün tükendi" : "Sepete Ekle"}
+                    >
+                        <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+                            <path
+                                d="M6 6h15l-1.5 9h-12L6 6zm0 0l-.6-3H3m5 15a1 1 0 100 2 1 1 0 000-2zm10 0a1 1 0 100 2 1 1 0 000-2z"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="1.8"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                            />
+                        </svg>
+                        {qtyInCart > 0 && <span className={styles.cartCount}>{qtyInCart}</span>}
+                    </button>
+                )}
+            </div>
+
+            <div className={styles.category}>{product.category}</div>
+            <Link href={`/products/${product.id}`} style={{ textDecoration: "none", color: "inherit" }}>
+                <div className={styles.name}>{product.name}</div>
+            </Link>
+            <div className={styles.price}>{product.price} TL</div>
+            {/* Az kaldıysa aciliyet hissi ver; bol stokta sayıyı göstermeye gerek yok. */}
+            {product.stock > 0 && product.stock <= 5 && (
+                <div className={styles.lowStock}>Son {product.stock} ürün!</div>
+            )}
+        </div>
+    );
+}

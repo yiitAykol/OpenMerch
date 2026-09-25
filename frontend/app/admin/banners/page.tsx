@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import styles from "../admin.module.scss";
-import { useApi } from "../../lib/useApi";
+import { useApi } from "@/lib/useApi";
 
 type Banner = { id: number; imageUrl: string; title: string | null };
 
@@ -15,20 +15,19 @@ export default function BannersPage() {
     const [title, setTitle] = useState("");
     const [isSubmitting, setIsSubmitting] = useState(false);
 
-    const fetchBanners = async () => {
-        try {
-            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/banners`);
-            if (res.ok) {
-                setBanners(await res.json());
-            }
-        } catch (error) {
-            console.error("Banner'lar getirilirken hata:", error);
-        } finally {
-            setIsLoading(false);
-        }
-    };
-
     useEffect(() => {
+        async function fetchBanners() {
+            try {
+                const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/banners`);
+                if (res.ok) {
+                    setBanners(await res.json());
+                }
+            } catch (error) {
+                console.error("Banner'lar getirilirken hata:", error);
+            } finally {
+                setIsLoading(false);
+            }
+        }
         fetchBanners();
     }, []);
 
@@ -115,7 +114,6 @@ export default function BannersPage() {
                     {imageUrl.trim() && (
                         <div className={styles.formGroup}>
                             <label>Önizleme</label>
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img
                                 src={imageUrl}
                                 alt="Önizleme"
@@ -151,7 +149,6 @@ export default function BannersPage() {
                         banners.map((banner) => (
                             <tr key={banner.id}>
                                 <td>
-                                    {/* eslint-disable-next-line @next/next/no-img-element */}
                                     <img
                                         src={banner.imageUrl}
                                         alt=""

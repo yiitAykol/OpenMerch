@@ -3,10 +3,10 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { useAuth } from "../context/AuthContext";
-import { useCart } from "../context/CartContext";
-import { useApi } from "../lib/useApi";
-import { formatPrice } from "../lib/orders";
+import { useAuth } from "@/context/AuthContext";
+import { useCart } from "@/context/CartContext";
+import { useApi } from "@/lib/useApi";
+import { formatPrice } from "@/lib/orders";
 import styles from "./checkout.module.scss";
 
 export default function CheckoutPage() {
@@ -15,7 +15,9 @@ export default function CheckoutPage() {
   const router = useRouter();
   const apiFetch = useApi();
 
-  const [fullName, setFullName] = useState("");
+  // null = kullanıcı alana hiç dokunmadı; o zaman kullanıcı adıyla ön-dolu gösterilir.
+  const [fullNameInput, setFullName] = useState<string | null>(null);
+  const fullName = fullNameInput ?? user?.username ?? "";
   const [address, setAddress] = useState("");
   const [city, setCity] = useState("");
   const [phone, setPhone] = useState("");
@@ -38,11 +40,6 @@ export default function CheckoutPage() {
       router.push("/login");
     }
   }, [loading, user, router]);
-
-  // Ad soyad alanını kullanıcı adıyla ön-doldur (kullanıcı değiştirebilir).
-  useEffect(() => {
-    if (user) setFullName((current) => current || user.username);
-  }, [user]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

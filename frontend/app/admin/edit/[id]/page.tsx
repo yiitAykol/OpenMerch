@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
 import styles from "../../admin.module.scss";
-import { useApi } from "../../../lib/useApi";
+import { useApi } from "@/lib/useApi";
 
 export default function EditProductPage() {
   const router = useRouter();

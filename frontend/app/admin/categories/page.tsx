@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import styles from "../admin.module.scss";
-import { useApi } from "../../lib/useApi";
+import { useApi } from "@/lib/useApi";
 
 type Category = { id: number; name: string };
 
@@ -14,20 +14,19 @@ export default function CategoriesPage() {
   const [newName, setNewName] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const fetchCategories = async () => {
-    try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/categories`);
-      if (res.ok) {
-        setCategories(await res.json());
-      }
-    } catch (error) {
-      console.error("Kategoriler getirilirken hata:", error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   useEffect(() => {
+    async function fetchCategories() {
+      try {
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/categories`);
+        if (res.ok) {
+          setCategories(await res.json());
+        }
+      } catch (error) {
+        console.error("Kategoriler getirilirken hata:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    }
     fetchCategories();
   }, []);
 

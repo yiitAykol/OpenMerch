@@ -63,18 +63,26 @@ Uygulama ilk kalktığında örnek ürünler ve varsayılan bir kullanıcı seed
 ## Proje yapısı
 
 ```
-├── docker-compose.yml     PostgreSQL 16
-├── productapi/            Spring Boot API
+├── docker-compose.yml         PostgreSQL 16
+├── productapi/                Spring Boot API
 │   └── src/main/java/com/example/productapi/
-│       ├── *Controller    uç noktalar + iş mantığı (ayrı service katmanı yoktur)
-│       ├── *Repository    Spring Data JPA
-│       └── *.java         entity'ler, SecurityConfig, JwtAuthFilter, RateLimiter …
-├── frontend/              Next.js (App Router)
-│   └── app/
-│       ├── admin/         yönetim paneli (rol kontrolüyle sarmalı)
-│       ├── context/       AuthContext, CartContext
-│       └── lib/           useApi, sipariş yardımcıları
-└── projedoc.md            ayrıntılı dokümantasyon ve tasarım kararları
+│       ├── ProductapiApplication.java   giriş noktası + örnek veri (seed)
+│       ├── controller/        uç noktalar + iş mantığı (ayrı service katmanı yoktur)
+│       ├── entity/            JPA entity'leri (Product, Order, User …)
+│       ├── repository/        Spring Data JPA
+│       ├── security/          SecurityConfig, JwtAuthFilter, JwtService, RateLimiter
+│       ├── service/           EmailService
+│       ├── config/            CorsConfig
+│       └── exception/         GlobalExceptionHandler
+├── frontend/                  Next.js (App Router)
+│   ├── app/                   yalnızca rotalar (sayfalar, layout'lar, sayfa stilleri)
+│   │   ├── (auth)/            login, register, verify — URL'de görünmeyen grup, ortak auth.module.scss
+│   │   └── admin/             yönetim paneli (rol kontrolüyle sarmalı)
+│   ├── components/            Header, ProductCard
+│   ├── context/               AuthContext, CartContext
+│   ├── lib/                   useApi, sipariş yardımcıları
+│   └── public/                statik dosyalar (logo)
+└── projedoc.md                ayrıntılı dokümantasyon ve tasarım kararları
 ```
 
 ## Bilinen eksikler

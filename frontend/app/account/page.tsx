@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useAuth } from "../context/AuthContext";
-import { useApi } from "../lib/useApi";
+import { useAuth } from "@/context/AuthContext";
+import { useApi } from "@/lib/useApi";
 
 export default function AccountPage() {
   const { user, loading, logout, replaceToken } = useAuth();
@@ -57,7 +57,7 @@ export default function AccountPage() {
       } else {
         setPasswordMessage(data.message || "Bir hata oluştu.");
       }
-    } catch (err) {
+    } catch {
       setPasswordMessage("Sunucuya ulaşılamadı.");
     }
   };
